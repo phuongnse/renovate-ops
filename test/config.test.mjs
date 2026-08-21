@@ -111,12 +111,12 @@ test('manifest bootstrap binds the callback to an unguessable state', () => {
 });
 
 test('main protection requires CI, independent review, and immutable history', () => {
-  assert.match(branchProtection, /contexts: \['validate'\]/);
+  assert.match(
+    branchProtection,
+    /contexts: \['validate', 'independent-review \/ independent-review'\]/,
+  );
   assert.match(branchProtection, /enforce_admins: true/);
-  assert.match(branchProtection, /dismiss_stale_reviews: true/);
-  assert.match(branchProtection, /require_code_owner_reviews: true/);
-  assert.match(branchProtection, /required_approving_review_count: 1/);
-  assert.match(branchProtection, /require_last_push_approval: true/);
+  assert.match(branchProtection, /required_pull_request_reviews: null/);
   assert.match(branchProtection, /required_linear_history: true/);
   assert.match(branchProtection, /required_conversation_resolution: true/);
   assert.match(branchProtection, /allow_force_pushes: false/);

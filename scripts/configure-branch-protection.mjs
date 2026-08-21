@@ -4,15 +4,10 @@ const repository = 'phuongnse/renovate-ops';
 const protection = {
   required_status_checks: {
     strict: true,
-    contexts: ['validate'],
+    contexts: ['validate', 'independent-review / independent-review'],
   },
   enforce_admins: true,
-  required_pull_request_reviews: {
-    dismiss_stale_reviews: true,
-    require_code_owner_reviews: true,
-    required_approving_review_count: 1,
-    require_last_push_approval: true,
-  },
+  required_pull_request_reviews: null,
   restrictions: null,
   required_linear_history: true,
   allow_force_pushes: false,
