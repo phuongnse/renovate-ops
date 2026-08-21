@@ -144,16 +144,16 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          target_sha="$(git log --format=%H --grep='^fix: pass the repository allowlist into Renovate$' -1)"
+          target_sha="$(git log --all --format=%H --grep='^feat: establish independent verification trust root$' -1)"
           test -n "$target_sha"
-          test "$(git show -s --format=%s "$target_sha")" = "fix: pass the repository allowlist into Renovate"
+          test "$(git show -s --format=%s "$target_sha")" = "feat: establish independent verification trust root"
           git push \
             "https://x-access-token:${GH_TOKEN}@github.com/phuongnse/renovate-ops.git" \
-            "$target_sha:refs/heads/chore/harden-bootstrap-app"
+            "$target_sha:refs/heads/feat/single-maintainer-governance-app"
           gh api --method POST repos/phuongnse/renovate-ops/pulls \
-            -f title="chore: bootstrap production Renovate operations" \
-            -f head=chore/harden-bootstrap-app \
+            -f title="feat: establish independent verification trust root" \
+            -f head=feat/single-maintainer-governance-app \
             -f base=main \
-            -f body="App-authored replacement for the initial operations bootstrap. Review and merge authorization remains human-owned." \
+            -f body="Establishes the immutable external verification trust root for explicit single-maintainer governance. Merge remains the sole human authorization." \
             -F draft=true \
             --jq .html_url
