@@ -21,7 +21,7 @@
 - Third-party actions use immutable commit SHAs; the Renovate image uses a multi-platform OCI digest.
 - No personal access token, arbitrary shell executor, arbitrary post-upgrade command, plugin loading, lifecycle scripts, or Docker socket.
 - Scheduled runs serialize and time out before the one-hour installation-token lifetime.
-- Production failures open or update an issue in the private operations repository; recovery closes it.
+- Production failures open or update an issue in the public operations repository; recovery closes it. Incident content contains no credential or private-repository data.
 - Renovate and process-adoption PRs are draft and never automerged.
 
 ## Residual risks
@@ -29,4 +29,5 @@
 - A malicious reviewed-and-merged adoption script can access the installation token during its run. Required review and branch protection are part of the security boundary.
 - A compromised third-party package registry can propose malicious artifacts. Hash locks, provenance checks, consumer CI, and human review must reject them before merge.
 - GitHub Actions and GitHub App infrastructure are external trusted services.
+- Operations source, workflow logs, and incident issues are public. Managed repositories must remain public unless logging and incident disclosure controls are redesigned first.
 - A leaked App private key remains valid until revoked. Rotate immediately on suspected disclosure.
