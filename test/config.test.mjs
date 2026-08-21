@@ -86,5 +86,6 @@ test('main protection requires CI, independent review, and immutable history', (
   assert.match(branchProtection, /required_conversation_resolution: true/);
   assert.match(branchProtection, /allow_force_pushes: false/);
   assert.match(branchProtection, /allow_deletions: false/);
-  assert.doesNotMatch(branchProtection, /^  restrictions:/m);
+  assert.match(branchProtection, /^  restrictions: null,/m);
+  assert.doesNotMatch(branchProtection, /dismissal_restrictions/);
 });
