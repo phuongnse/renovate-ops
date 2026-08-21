@@ -143,11 +143,12 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          target_sha="$(git rev-parse HEAD^)"
+          target_sha="$(git log --format=%H --grep='^fix: pass the repository allowlist into Renovate$' -1)"
+          test -n "$target_sha"
           test "$(git show -s --format=%s "$target_sha")" = "fix: pass the repository allowlist into Renovate"
-          gh api --method POST repos/phuongnse/renovate-ops/git/refs \
-            -f ref=refs/heads/chore/harden-bootstrap-app \
-            -f sha="$target_sha"
+          git push \
+            "https://x-access-token:${GH_TOKEN}@github.com/phuongnse/renovate-ops.git" \
+            "$target_sha:refs/heads/chore/harden-bootstrap-app"
           gh api --method POST repos/phuongnse/renovate-ops/pulls \
             -f title="chore: bootstrap production Renovate operations" \
             -f head=chore/harden-bootstrap-app \
