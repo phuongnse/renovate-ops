@@ -1,0 +1,272 @@
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+
+const allowlistedRepositories = JSON.parse(
+  await readFile(new URL('../repositories.json', import.meta.url), 'utf8'),
+);
+const exactAdoptionCommand =
+  'python .process/adopt-process.py --project-root . --requirements-lock requirements/process.txt';
+const maximumChangedFiles = 1_000;
+const maximumReviewedBlobBytes = 2_000_000;
+const maximumAggregateBytes = 25_000_000;
+
+function argument(name) {
+  const index = process.argv.indexOf(name);
+  if (index < 0 || index + 1 >= process.argv.length) {
+    throw new Error(`missing ${name}`);
+  }
+  return process.argv[index + 1];
+}
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: options.cwd,
+    encoding: options.encoding ?? 'utf8',
+    maxBuffer: options.maxBuffer ?? 32 * 1024 * 1024,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0 && !options.allowFailure) {
+    const detail = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
+    throw new Error(`${command} ${args.join(' ')} failed${detail ? `: ${detail}` : ''}`);
+  }
+  return result;
+}
+
+function git(root, args, options = {}) {
+  return run('git', args, { cwd: root, ...options });
+}
+
+function assertSha(value, label) {
+  if (!/^[0-9a-f]{40}$/.test(value ?? '')) throw new Error(`${label} must be a full SHA`);
+}
+
+function assertSafePath(value) {
+  if (
+    value.length === 0 ||
+    value.length > 512 ||
+    value.startsWith('/') ||
+    value.includes('\\') ||
+    value.split('/').includes('..') ||
+    /[\0-\x1f\x7f]/.test(value)
+  ) {
+    throw new Error(`unsafe changed path: ${JSON.stringify(value)}`);
+  }
+}
+
+function changedFiles(root, baseSha, headSha) {
+  const result = git(
+    root,
+    ['diff', '--name-only', '-z', '--diff-filter=ACMR', `${baseSha}...${headSha}`],
+    { encoding: 'buffer' },
+  );
+  const files = result.stdout
+    .toString('utf8')
+    .split('\0')
+    .filter(Boolean);
+  if (files.length > maximumChangedFiles) {
+    throw new Error(`changed file count exceeds ${maximumChangedFiles}`);
+  }
+  for (const file of files) assertSafePath(file);
+  return files;
+}
+
+function blobAt(root, sha, file) {
+  const result = git(root, ['show', `${sha}:${file}`], {
+    encoding: 'buffer',
+    maxBuffer: maximumReviewedBlobBytes + 1,
+    allowFailure: true,
+  });
+  if (result.status !== 0) throw new Error(`cannot read reviewed blob: ${file}`);
+  if (result.stdout.length > maximumReviewedBlobBytes) {
+    throw new Error(`reviewed blob exceeds ${maximumReviewedBlobBytes} bytes: ${file}`);
+  }
+  return result.stdout;
+}
+
+function assertRegularBlob(root, sha, file) {
+  const result = git(root, ['ls-tree', sha, '--', file]);
+  const mode = result.stdout.trim().split(/\s+/, 1)[0];
+  if (!['100644', '100755'].includes(mode)) {
+    throw new Error(`changed path is not a regular file: ${file}`);
+  }
+}
+
+function assertNoCredential(blob, file) {
+  if (blob.includes(0)) return;
+  const text = blob.toString('utf8');
+  const patterns = [
+    /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
+    /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
+    /\bpypi-[A-Za-z0-9_-]{40,}\b/,
+  ];
+  if (patterns.some((pattern) => pattern.test(text))) {
+    throw new Error(`credential-shaped content detected: ${file}`);
+  }
+}
+
+function assertActionPins(root, headSha) {
+  const result = git(
+    root,
+    ['ls-tree', '-r', '--name-only', '-z', headSha, '--', '.github/workflows'],
+    { encoding: 'buffer' },
+  );
+  const workflowFiles = result.stdout
+    .toString('utf8')
+    .split('\0')
+    .filter((file) => /\.ya?ml$/.test(file));
+  const externalAction =
+    /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[^@\s]+)?@[0-9a-f]{40}$/;
+  const dockerAction = /^docker:\/\/[^\s]+@sha256:[0-9a-f]{64}$/;
+  for (const file of workflowFiles) {
+    const text = blobAt(root, headSha, file).toString('utf8');
+    for (const line of text.split(/\r?\n/)) {
+      const match = line.match(/^\s*(?:-\s*)?uses:\s*['"]?([^'"\s#]+)['"]?/);
+      if (!match) continue;
+      const reference = match[1];
+      if (reference.startsWith('./')) continue;
+      if (!externalAction.test(reference) && !dockerAction.test(reference)) {
+        throw new Error(`workflow action is not immutably pinned: ${file}: ${reference}`);
+      }
+    }
+  }
+}
+
+async function readJsonIfPresent(root, candidates) {
+  for (const candidate of candidates) {
+    try {
+      return {
+        path: candidate,
+        value: JSON.parse(await readFile(path.join(root, candidate), 'utf8')),
+      };
+    } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw new Error(`${candidate} must use the strict JSON subset: ${error.message}`);
+    }
+  }
+  return null;
+}
+
+async function assertRenovateContract(root) {
+  const loaded = await readJsonIfPresent(root, [
+    '.github/renovate.json',
+    '.github/renovate.json5',
+    'renovate.json',
+    'renovate.json5',
+  ]);
+  if (!loaded) throw new Error('repository must declare a Renovate configuration');
+  const config = loaded.value;
+  if (config.automerge !== false) throw new Error(`${loaded.path}: automerge must be false`);
+  if (config.draftPR !== true) throw new Error(`${loaded.path}: draftPR must be true`);
+  if (config.branchPrefix !== 'automation/renovate/') {
+    throw new Error(`${loaded.path}: unexpected branchPrefix`);
+  }
+  for (const rule of config.packageRules ?? []) {
+    if (rule.automerge === true) throw new Error(`${loaded.path}: package rule enables automerge`);
+  }
+  if (config.postUpgradeTasks) {
+    if (
+      config.postUpgradeTasks.executionMode !== 'branch' ||
+      JSON.stringify(config.postUpgradeTasks.commands) !== JSON.stringify([exactAdoptionCommand])
+    ) {
+      throw new Error(`${loaded.path}: post-upgrade task exceeds the adoption contract`);
+    }
+  }
+}
+
+async function assertProcessLock(root) {
+  let input;
+  try {
+    input = await readFile(path.join(root, 'requirements/process.in'), 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  }
+  const pins = [...input.matchAll(/^engineering-process==([0-9]+\.[0-9]+\.[0-9]+)$/gm)];
+  if (pins.length !== 1) throw new Error('requirements/process.in must contain one exact authority pin');
+  const lock = await readFile(path.join(root, 'requirements/process.txt'), 'utf8');
+  if (!lock.includes(`engineering-process==${pins[0][1]}`) || !lock.includes('--hash=sha256:')) {
+    throw new Error('requirements/process.txt must hash-lock the exact authority pin');
+  }
+}
+
+async function assertOperationsBoundary(root, repository) {
+  if (repository !== 'phuongnse/renovate-ops') return;
+  const config = await readFile(path.join(root, 'config.cjs'), 'utf8');
+  const workflow = await readFile(path.join(root, '.github/workflows/renovate.yml'), 'utf8');
+  for (const required of [
+    'autodiscover: false',
+    'allowScripts: false',
+    'allowPlugins: false',
+    'allowShellExecutorForPostUpgradeCommands: false',
+  ]) {
+    if (!config.includes(required)) throw new Error(`operations config missing ${required}`);
+  }
+  if (!config.includes('adopt-process\\.py --project-root \\. --requirements-lock')) {
+    throw new Error('operations command allowlist is not exact');
+  }
+  if (/mount-docker-socket:\s*true/.test(workflow)) {
+    throw new Error('Renovate workflow exposes the Docker socket');
+  }
+}
+
+async function main() {
+  const projectRoot = await realpath(argument('--project-root'));
+  const outputPath = path.resolve(argument('--output'));
+  const event = JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, 'utf8'));
+  const repository = process.env.GITHUB_REPOSITORY;
+  const pullRequest = event.pull_request;
+  if (!pullRequest) throw new Error('independent review requires a pull_request event');
+  if (repository !== event.repository?.full_name || !allowlistedRepositories.includes(repository)) {
+    throw new Error(`repository is outside the reviewed allowlist: ${repository}`);
+  }
+  if (pullRequest.base.ref !== 'main') throw new Error('pull request must target main');
+  const baseSha = pullRequest.base.sha;
+  const headSha = pullRequest.head.sha;
+  assertSha(baseSha, 'base SHA');
+  assertSha(headSha, 'head SHA');
+  const checkoutSha = git(projectRoot, ['rev-parse', 'HEAD']).stdout.trim();
+  if (checkoutSha !== headSha) throw new Error('checkout does not match the reviewed head SHA');
+
+  git(projectRoot, ['cat-file', '-e', `${baseSha}^{commit}`]);
+  git(projectRoot, ['diff', '--check', `${baseSha}...${headSha}`]);
+  const files = changedFiles(projectRoot, baseSha, headSha);
+  let aggregateBytes = 0;
+  for (const file of files) {
+    assertRegularBlob(projectRoot, headSha, file);
+    const blob = blobAt(projectRoot, headSha, file);
+    aggregateBytes += blob.length;
+    assertNoCredential(blob, file);
+  }
+  if (aggregateBytes > maximumAggregateBytes) {
+    throw new Error(`reviewed bytes exceed ${maximumAggregateBytes}`);
+  }
+  assertActionPins(projectRoot, headSha);
+  await assertRenovateContract(projectRoot);
+  await assertProcessLock(projectRoot);
+  await assertOperationsBoundary(projectRoot, repository);
+
+  const report = {
+    schemaVersion: 1,
+    status: 'passed',
+    governanceMode: 'single-maintainer',
+    verificationKind: 'independent-automated',
+    repository,
+    baseSha,
+    headSha,
+    changedFileCount: files.length,
+    reviewedBytes: aggregateBytes,
+    verifierRepository: process.env.TRUSTED_WORKFLOW_REPOSITORY,
+    verifierSha: process.env.TRUSTED_WORKFLOW_SHA,
+  };
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' });
+  process.stdout.write(`${JSON.stringify(report)}\n`);
+}
+
+try {
+  await main();
+} catch (error) {
+  process.stderr.write(`independent review failed: ${error.message}\n`);
+  process.exitCode = 1;
+}

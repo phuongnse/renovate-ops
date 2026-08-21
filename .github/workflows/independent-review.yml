@@ -1,0 +1,55 @@
+name: Independent verification
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  independent-review:
+    name: independent-review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out reviewed pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: reviewed
+
+      - name: Check out immutable verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          persist-credentials: false
+          path: trusted-verifier
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
+
+      - name: Verify immutable policy boundary
+        env:
+          TRUSTED_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          TRUSTED_WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: >-
+          node trusted-verifier/scripts/independent-review.mjs
+          --project-root reviewed
+          --output "$RUNNER_TEMP/independent-review/report.json"
+
+      - name: Publish verification evidence
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: independent-review-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/independent-review/report.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
