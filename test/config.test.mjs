@@ -22,6 +22,7 @@ const independentWorkflow = await readFile(
   new URL('.github/workflows/independent-review.yml', root),
   'utf8',
 );
+const ciWorkflow = await readFile(new URL('.github/workflows/ci.yml', root), 'utf8');
 
 test('global configuration has a closed repository boundary', () => {
   assert.deepEqual(config.repositories, repositories);
@@ -130,4 +131,8 @@ test('independent review resolves verifier code from the called workflow SHA', (
   assert.match(independentWorkflow, /ref: \$\{\{ job\.workflow_sha \}\}/);
   assert.match(independentWorkflow, /TRUSTED_WORKFLOW_SHA: \$\{\{ job\.workflow_sha \}\}/);
   assert.doesNotMatch(independentWorkflow, /pull_request_target|secrets:\s*inherit/);
+  assert.match(
+    ciWorkflow,
+    /uses: phuongnse\/renovate-ops\/\.github\/workflows\/independent-review\.yml@[0-9a-f]{40}/,
+  );
 });
