@@ -14,6 +14,10 @@ const branchProtection = await readFile(
   new URL('scripts/configure-branch-protection.mjs', root),
   'utf8',
 );
+const manifestServer = await readFile(
+  new URL('scripts/github-app-manifest-server.mjs', root),
+  'utf8',
+);
 
 test('global configuration has a closed repository boundary', () => {
   assert.deepEqual(config.repositories, repositories);
@@ -60,6 +64,7 @@ test('runtime and actions are immutable and Docker socket is unavailable', () =>
 test('GitHub App manifest matches the explicit workflow permissions', () => {
   assert.equal(manifest.public, false);
   assert.equal(manifest.hook_attributes.active, false);
+  assert.equal(manifest.hook_attributes.url, 'https://github.com/phuongnse/renovate-ops');
   assert.deepEqual(manifest.default_events, []);
   assert.deepEqual(manifest.default_permissions, {
     administration: 'read',
@@ -73,6 +78,13 @@ test('GitHub App manifest matches the explicit workflow permissions', () => {
     vulnerability_alerts: 'read',
     workflows: 'write',
   });
+});
+
+test('manifest bootstrap binds the callback to an unguessable state', () => {
+  assert.match(manifestServer, /randomBytes\(32\)/);
+  assert.match(manifestServer, /timingSafeEqual/);
+  assert.match(manifestServer, /settings\/apps\/new\?state=\$\{state\}/);
+  assert.match(manifestServer, /hasValidState\(url\.searchParams\.get\('state'\)\)/);
 });
 
 test('main protection requires CI, independent review, and immutable history', () => {

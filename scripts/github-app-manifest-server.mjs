@@ -1,4 +1,5 @@
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 
 const host = '127.0.0.1';
@@ -7,6 +8,7 @@ const manifestPath = new URL('../github-app-manifest.json', import.meta.url);
 const credentialDirectory = new URL('../.local/', import.meta.url);
 const credentialPath = new URL('github-app.json', credentialDirectory);
 const manifest = await readFile(manifestPath, 'utf8');
+const state = randomBytes(32).toString('hex');
 
 function escapeHtml(value) {
   return value
@@ -27,6 +29,13 @@ function send(response, status, body) {
   response.end(body);
 }
 
+function hasValidState(candidate) {
+  if (typeof candidate !== 'string') return false;
+  const expected = Buffer.from(state, 'utf8');
+  const received = Buffer.from(candidate, 'utf8');
+  return expected.length === received.length && timingSafeEqual(expected, received);
+}
+
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', `http://${host}:${port}`);
 
@@ -38,7 +47,7 @@ const server = http.createServer(async (request, response) => {
   <style>body{font:16px system-ui;max-width:46rem;margin:4rem auto;padding:0 1rem}button{font:inherit;padding:.7rem 1rem}</style>
   <h1>Create the private Renovate GitHub App</h1>
   <p>GitHub will show the exact permissions from the version-controlled manifest before creating the app.</p>
-  <form method="post" action="https://github.com/settings/apps/new">
+  <form method="post" action="https://github.com/settings/apps/new?state=${state}">
     <input type="hidden" name="manifest" value="${escapeHtml(manifest)}">
     <button type="submit">Review and create GitHub App</button>
   </form>
@@ -47,6 +56,10 @@ const server = http.createServer(async (request, response) => {
   }
 
   if (request.method === 'GET' && url.pathname === '/callback') {
+    if (!hasValidState(url.searchParams.get('state'))) {
+      send(response, 400, '<h1>Invalid manifest flow state</h1>');
+      return;
+    }
     const code = url.searchParams.get('code');
     if (!code) {
       send(response, 400, '<h1>Missing one-time manifest code</h1>');
