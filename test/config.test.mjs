@@ -18,6 +18,10 @@ const manifestServer = await readFile(
   new URL('scripts/github-app-manifest-server.mjs', root),
   'utf8',
 );
+const independentWorkflow = await readFile(
+  new URL('.github/workflows/independent-review.yml', root),
+  'utf8',
+);
 
 test('global configuration has a closed repository boundary', () => {
   assert.deepEqual(config.repositories, repositories);
@@ -118,4 +122,12 @@ test('main protection requires CI, independent review, and immutable history', (
   assert.match(branchProtection, /allow_deletions: false/);
   assert.match(branchProtection, /^  restrictions: null,/m);
   assert.doesNotMatch(branchProtection, /dismissal_restrictions/);
+});
+
+test('independent review resolves verifier code from the called workflow SHA', () => {
+  assert.match(independentWorkflow, /permissions:\n  contents: read/);
+  assert.match(independentWorkflow, /repository: \$\{\{ job\.workflow_repository \}\}/);
+  assert.match(independentWorkflow, /ref: \$\{\{ job\.workflow_sha \}\}/);
+  assert.match(independentWorkflow, /TRUSTED_WORKFLOW_SHA: \$\{\{ job\.workflow_sha \}\}/);
+  assert.doesNotMatch(independentWorkflow, /pull_request_target|secrets:\s*inherit/);
 });

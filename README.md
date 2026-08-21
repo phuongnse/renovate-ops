@@ -45,3 +45,4 @@ npm run check
 ```
 
 Operational procedures are in `docs/RUNBOOK.md`. Security assumptions are in `docs/THREAT_MODEL.md`.
+The single-maintainer authorization and independent-verification contract is in `docs/GOVERNANCE.md`.
