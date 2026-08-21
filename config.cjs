@@ -18,7 +18,7 @@ module.exports = {
   allowPlugins: false,
   allowShellExecutorForPostUpgradeCommands: false,
   allowedCommands: [
-    '^python \\.process/adopt-process\\.py --project-root \\. --requirements-lock requirements/process\\.txt$',
+    String.raw`^python \.process/adopt-process\.py --project-root \. --requirements-lock requirements/process\.txt$`,
   ],
   useCloudMetadataServices: false,
 };
