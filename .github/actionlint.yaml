@@ -1,0 +1,6 @@
+paths:
+  .github/workflows/independent-review.yml:
+    ignore:
+      # GitHub.com supports these reusable-workflow identity properties. Remove
+      # this narrow compatibility rule once actionlint's context schema catches up.
+      - 'property "workflow_(repository|sha)" is not defined in object type'

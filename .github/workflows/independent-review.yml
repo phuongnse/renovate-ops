@@ -50,9 +50,11 @@ jobs:
           head_sha="$(jq -r '.pull_request.head.sha // empty' "$event_path")"
           test -n "$pr_number"
           printf '%s' "$head_sha" | grep -Eq '^[0-9a-f]{40}$'
-          printf 'event_path=%s\n' "$event_path" >> "$GITHUB_OUTPUT"
-          printf 'pr_number=%s\n' "$pr_number" >> "$GITHUB_OUTPUT"
-          printf 'head_sha=%s\n' "$head_sha" >> "$GITHUB_OUTPUT"
+          {
+            printf 'event_path=%s\n' "$event_path"
+            printf 'pr_number=%s\n' "$pr_number"
+            printf 'head_sha=%s\n' "$head_sha"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check out reviewed pull request
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
