@@ -5,6 +5,7 @@
   "redirect_url": "http://127.0.0.1:38917/callback",
   "public": false,
   "hook_attributes": {
+    "url": "https://github.com/phuongnse/renovate-ops",
     "active": false
   },
   "default_events": [],

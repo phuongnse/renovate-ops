@@ -4,7 +4,7 @@
 
 The `Renovate` workflow runs at minute 17 every hour when repository variable `RENOVATE_ENABLED` is `true`. Scheduled invocations are production runs. Manual invocations default to full dry-run and can run before activation; manual production requires both an explicit `production` choice and `RENOVATE_ENABLED=true`.
 
-Review the private operations repository's Actions history and any open issue named `Renovate production run is failing`. Successful recovery closes that incident automatically.
+Review the public operations repository's Actions history and any open issue named `Renovate production run is failing`. Successful recovery closes that incident automatically. Never place credentials or private-repository data in workflow logs or incident comments.
 
 ## Add a repository
 
@@ -20,7 +20,7 @@ Removing a repository is the reverse: remove it from `repositories.json` first, 
 ## Rotate the private key
 
 1. Generate a new private key in the GitHub App settings.
-2. Replace `RENOVATE_APP_PRIVATE_KEY` in the private operations repository.
+2. Replace the encrypted `RENOVATE_APP_PRIVATE_KEY` Actions secret in the operations repository.
 3. Dispatch a dry-run and confirm token creation and all repository scans.
 4. Delete the old private key from the GitHub App settings and from every local machine.
 

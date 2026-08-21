@@ -11,7 +11,8 @@
   "scripts": {
     "test": "node --test",
     "validate": "renovate-config-validator config.cjs --strict && renovate-config-validator .github/renovate.json5 --strict",
-    "check": "npm run test && npm run validate"
+    "check": "npm run test && npm run validate",
+    "bootstrap:protect": "node scripts/configure-branch-protection.mjs"
   },
   "devDependencies": {
     "renovate": "44.37.1"

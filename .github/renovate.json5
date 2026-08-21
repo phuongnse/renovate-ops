@@ -19,7 +19,7 @@
       "customType": "regex",
       "managerFilePatterns": ["/^\\.github/workflows/renovate\\.yml$/"],
       "matchStrings": [
-        "renovate-version: (?<currentDigest>sha256:[a-f0-9]{64}) # renovate: datasource=docker depName=(?<depName>\\S+) currentValue=(?<currentValue>\\S+)"
+        "renovate-version: (?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64}) # renovate: datasource=docker depName=(?<depName>\\S+)"
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
