@@ -18,12 +18,13 @@ Shell execution, arbitrary scripts, plugins, repository discovery, and Docker so
 
 1. Run `npm ci --ignore-scripts && npm run check`.
 2. Create the private repository and push this reviewed source.
-3. Run `node scripts/github-app-manifest-server.mjs` and open the printed localhost URL.
-4. Review and create the private GitHub App. The callback stores the one-time response at `.local/github-app.json` with mode `0600`.
-5. Run `node scripts/configure-github.mjs`. It writes the Client ID and private key to the private operations repository, keeps `RENOVATE_ENABLED=false`, then deletes the local response.
-6. Install the App on selected repositories: `renovate-ops`, `engineering-process`, `axis`, and `axis-reference-product`.
-7. Dispatch `Renovate` with `mode=dry-run`. Review all four repository logs.
-8. Follow `docs/CUTOVER.md`; do not let hosted and self-hosted Renovate run in production concurrently. Scheduled and manual production runs remain disabled until `RENOVATE_ENABLED=true`.
+3. Run `npm run bootstrap:protect`. GitHub branch protection on a private personal repository requires a plan that supports it; this is a production precondition, not an optional hardening step.
+4. Run `node scripts/github-app-manifest-server.mjs` and open the printed localhost URL.
+5. Review and create the private GitHub App. The callback stores the one-time response at `.local/github-app.json` with mode `0600`.
+6. Run `node scripts/configure-github.mjs`. It writes the Client ID and private key to the private operations repository, keeps `RENOVATE_ENABLED=false`, then deletes the local response.
+7. Install the App on selected repositories: `renovate-ops`, `engineering-process`, `axis`, and `axis-reference-product`.
+8. Dispatch `Renovate` with `mode=dry-run`. Review all four repository logs.
+9. Follow `docs/CUTOVER.md`; do not let hosted and self-hosted Renovate run in production concurrently. Scheduled and manual production runs remain disabled until `RENOVATE_ENABLED=true`.
 
 ## Adding a consumer
 

@@ -5,6 +5,7 @@ The Mend-hosted Renovate App is not removed during bootstrap.
 ## Preconditions
 
 - The private operations repository is pushed and CI passes.
+- `main` requires the `validate` check, one fresh code-owner approval, conversation resolution, linear history, and applies protection to administrators.
 - The private GitHub App is installed with selected access to every allowlisted repository.
 - Repository variable `RENOVATE_APP_CLIENT_ID` and secret `RENOVATE_APP_PRIVATE_KEY` exist.
 - A manual full dry-run completes successfully for every allowlisted repository.
