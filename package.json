@@ -1,0 +1,19 @@
+{
+  "name": "renovate-ops",
+  "version": "0.0.0-private",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "packageManager": "npm@11.16.0",
+  "scripts": {
+    "test": "node --test",
+    "validate": "renovate-config-validator config.cjs --strict && renovate-config-validator .github/renovate.json5 --strict",
+    "check": "npm run test && npm run validate"
+  },
+  "devDependencies": {
+    "renovate": "44.37.1"
+  }
+}

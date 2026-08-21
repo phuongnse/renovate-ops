@@ -1,0 +1,23 @@
+{
+  "name": "phuongnse-renovate-ops",
+  "url": "https://github.com/phuongnse/renovate-ops",
+  "description": "Private, self-hosted Renovate control plane for phuongnse repositories.",
+  "redirect_url": "http://127.0.0.1:38917/callback",
+  "public": false,
+  "hook_attributes": {
+    "active": false
+  },
+  "default_events": [],
+  "default_permissions": {
+    "administration": "read",
+    "checks": "write",
+    "contents": "write",
+    "issues": "write",
+    "members": "read",
+    "metadata": "read",
+    "pull_requests": "write",
+    "statuses": "write",
+    "vulnerability_alerts": "read",
+    "workflows": "write"
+  }
+}

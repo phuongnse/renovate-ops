@@ -1,0 +1,22 @@
+'use strict';
+
+const repositories = require('./repositories.json');
+
+module.exports = {
+  platform: 'github',
+  endpoint: 'https://api.github.com/',
+  repositories,
+  autodiscover: false,
+  onboarding: false,
+  requireConfig: 'required',
+  forkProcessing: 'disabled',
+  platformCommit: 'enabled',
+  binarySource: 'install',
+  allowScripts: false,
+  allowPlugins: false,
+  allowShellExecutorForPostUpgradeCommands: false,
+  allowedCommands: [
+    '^python \\.process/adopt-process\\.py --project-root \\. --requirements-lock requirements/process\\.txt$',
+  ],
+  useCloudMetadataServices: false,
+};

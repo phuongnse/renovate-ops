@@ -1,0 +1,109 @@
+name: Renovate
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Run mode
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - production
+
+concurrency:
+  group: renovate-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  renovate:
+    name: Renovate (${{ github.event_name == 'schedule' && 'production' || inputs.mode }})
+    if: (github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run') || vars.RENOVATE_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - name: Check out operations config
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve repository allowlist
+        id: allowlist
+        run: node scripts/export-repositories.mjs >> "$GITHUB_OUTPUT"
+
+      - name: Create short-lived GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          owner: phuongnse
+          repositories: ${{ steps.allowlist.outputs.repositories }}
+          permission-administration: read
+          permission-checks: write
+          permission-contents: write
+          permission-issues: write
+          permission-members: read
+          permission-metadata: read
+          permission-pull-requests: write
+          permission-statuses: write
+          permission-vulnerability-alerts: read
+          permission-workflows: write
+
+      - name: Renovate dry-run
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run'
+        uses: renovatebot/github-action@e09d604f8f803bb527bd8321ed5be06c460b8682 # v46.2.2
+        with:
+          configurationFile: config.cjs
+          token: ${{ steps.app-token.outputs.token }}
+          renovate-version: sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate currentValue=44.37.1
+        env:
+          LOG_FORMAT: json
+          LOG_LEVEL: info
+          RENOVATE_DRY_RUN: full
+
+      - name: Renovate production
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'production')
+        uses: renovatebot/github-action@e09d604f8f803bb527bd8321ed5be06c460b8682 # v46.2.2
+        with:
+          configurationFile: config.cjs
+          token: ${{ steps.app-token.outputs.token }}
+          renovate-version: sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate currentValue=44.37.1
+        env:
+          LOG_FORMAT: json
+          LOG_LEVEL: info
+
+      - name: Open or update an operations incident
+        if: failure() && (github.event_name == 'schedule' || inputs.mode == 'production')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Renovate production run is failing"
+          number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number --jq '.[0].number // empty')"
+          body="Production run failed: $RUN_URL"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
+
+      - name: Resolve the operations incident after recovery
+        if: success() && (github.event_name == 'schedule' || inputs.mode == 'production')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Renovate production run is failing"
+          number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "Recovered in: $RUN_URL"
+            gh issue close "$number" --repo "$GITHUB_REPOSITORY" --reason completed
+          fi

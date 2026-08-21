@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "automerge": false,
+  "branchPrefix": "automation/renovate/",
+  "dependencyDashboard": true,
+  "draftPR": true,
+  "labels": ["dependencies", "operations"],
+  "schedule": ["before 5am on monday"],
+  "timezone": "Asia/Ho_Chi_Minh",
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/renovate\\.yml$/"],
+      "matchStrings": [
+        "renovate-version: (?<currentDigest>sha256:[a-f0-9]{64}) # renovate: datasource=docker depName=(?<depName>\\S+) currentValue=(?<currentValue>\\S+)"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Keep the Renovate runtime and wrapper action together for review",
+      "matchPackageNames": [
+        "ghcr.io/renovatebot/renovate",
+        "renovatebot/github-action"
+      ],
+      "groupName": "Renovate runtime",
+      "automerge": false,
+      "prPriority": 100
+    }
+  ]
+}
