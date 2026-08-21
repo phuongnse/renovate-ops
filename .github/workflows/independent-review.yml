@@ -79,12 +79,12 @@ jobs:
 
       - name: Verify immutable policy boundary
         env:
-          GITHUB_EVENT_PATH: ${{ steps.review.outputs.event_path }}
           TRUSTED_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
           TRUSTED_WORKFLOW_SHA: ${{ job.workflow_sha }}
         run: >-
           node trusted-verifier/scripts/independent-review.mjs
           --project-root reviewed
+          --event-path "${{ steps.review.outputs.event_path }}"
           --output "$RUNNER_TEMP/independent-review/report.json"
 
       - name: Publish verification evidence

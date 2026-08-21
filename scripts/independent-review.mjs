@@ -213,7 +213,8 @@ async function assertOperationsBoundary(root, repository) {
 async function main() {
   const projectRoot = await realpath(argument('--project-root'));
   const outputPath = path.resolve(argument('--output'));
-  const event = JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, 'utf8'));
+  const eventPath = path.resolve(argument('--event-path'));
+  const event = JSON.parse(await readFile(eventPath, 'utf8'));
   const repository = process.env.GITHUB_REPOSITORY;
   const pullRequest = event.pull_request;
   if (!pullRequest) throw new Error('independent review requires a pull_request event');
