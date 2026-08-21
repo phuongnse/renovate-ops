@@ -22,6 +22,11 @@ const independentWorkflow = await readFile(
   new URL('.github/workflows/independent-review.yml', root),
   'utf8',
 );
+const ciWorkflow = await readFile(new URL('.github/workflows/ci.yml', root), 'utf8');
+const repositoryProtections = await readFile(
+  new URL('scripts/configure-repository-protections.mjs', root),
+  'utf8',
+);
 
 test('global configuration has a closed repository boundary', () => {
   assert.deepEqual(config.repositories, repositories);
@@ -110,12 +115,12 @@ test('manifest bootstrap binds the callback to an unguessable state', () => {
 });
 
 test('main protection requires CI, independent review, and immutable history', () => {
-  assert.match(branchProtection, /contexts: \['validate'\]/);
+  assert.match(
+    branchProtection,
+    /contexts: \['validate', 'independent-review \/ independent-review'\]/,
+  );
   assert.match(branchProtection, /enforce_admins: true/);
-  assert.match(branchProtection, /dismiss_stale_reviews: true/);
-  assert.match(branchProtection, /require_code_owner_reviews: true/);
-  assert.match(branchProtection, /required_approving_review_count: 1/);
-  assert.match(branchProtection, /require_last_push_approval: true/);
+  assert.match(branchProtection, /required_pull_request_reviews: null/);
   assert.match(branchProtection, /required_linear_history: true/);
   assert.match(branchProtection, /required_conversation_resolution: true/);
   assert.match(branchProtection, /allow_force_pushes: false/);
@@ -130,4 +135,17 @@ test('independent review resolves verifier code from the called workflow SHA', (
   assert.match(independentWorkflow, /ref: \$\{\{ job\.workflow_sha \}\}/);
   assert.match(independentWorkflow, /TRUSTED_WORKFLOW_SHA: \$\{\{ job\.workflow_sha \}\}/);
   assert.doesNotMatch(independentWorkflow, /pull_request_target|secrets:\s*inherit/);
+  assert.match(
+    ciWorkflow,
+    /uses: phuongnse\/renovate-ops\/\.github\/workflows\/independent-review\.yml@[0-9a-f]{40}/,
+  );
+});
+
+test('single-maintainer protection covers every allowlisted repository', () => {
+  for (const repository of repositories) assert.match(repositoryProtections, new RegExp(repository));
+  assert.match(repositoryProtections, /required_pull_request_reviews: null/);
+  assert.match(repositoryProtections, /'independent-review \/ independent-review'/);
+  assert.match(repositoryProtections, /required_status_checks: \{ strict: true, contexts \}/);
+  assert.match(repositoryProtections, /allow_force_pushes: false/);
+  assert.match(repositoryProtections, /allow_deletions: false/);
 });

@@ -9,6 +9,12 @@ permissions:
   contents: read
 
 jobs:
+  independent-review:
+    name: independent-review
+    permissions:
+      contents: read
+    uses: phuongnse/renovate-ops/.github/workflows/independent-review.yml@48a644b081ea9d098796432750f892e2e3f44614
+
   validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
