@@ -155,6 +155,7 @@ test('event-driven review binds dispatch inputs to the live pull request', () =>
   assert.match(independentWorkflow, /reviewed_head_sha:/);
   assert.match(independentWorkflow, /repos\/\$GITHUB_REPOSITORY\/pulls\/\$REQUESTED_PR_NUMBER/);
   assert.match(independentWorkflow, /\.head\.sha[^\n]+REQUESTED_HEAD_SHA/);
-  assert.match(independentWorkflow, /GITHUB_EVENT_PATH: \$\{\{ steps\.review\.outputs\.event_path \}\}/);
+  assert.match(independentWorkflow, /--event-path "\$\{\{ steps\.review\.outputs\.event_path \}\}"/);
+  assert.doesNotMatch(independentWorkflow, /GITHUB_EVENT_PATH: \$\{\{ steps\.review\.outputs\.event_path \}\}/);
   assert.doesNotMatch(independentWorkflow, /\bschedule:|workflow_dispatch:/);
 });

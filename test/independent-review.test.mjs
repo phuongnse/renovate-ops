@@ -67,12 +67,20 @@ async function eventFile(root, baseSha, headSha) {
 function runVerifier(root, eventPath, outputPath) {
   return spawnSync(
     process.execPath,
-    [verifier, '--project-root', root, '--output', outputPath],
+    [
+      verifier,
+      '--project-root',
+      root,
+      '--event-path',
+      eventPath,
+      '--output',
+      outputPath,
+    ],
     {
       encoding: 'utf8',
       env: {
         ...process.env,
-        GITHUB_EVENT_PATH: eventPath,
+        GITHUB_EVENT_PATH: path.join(root, 'ignored-default-event.json'),
         GITHUB_REPOSITORY: 'phuongnse/axis-reference-product',
         TRUSTED_WORKFLOW_REPOSITORY: 'phuongnse/renovate-ops',
         TRUSTED_WORKFLOW_SHA: 'a'.repeat(40),
@@ -81,7 +89,7 @@ function runVerifier(root, eventPath, outputPath) {
   );
 }
 
-test('independent verifier emits bounded single-maintainer evidence', async () => {
+test('independent verifier uses the explicit immutable event path', async () => {
   const { root, baseSha, headSha } = await fixture();
   const eventPath = await eventFile(root, baseSha, headSha);
   const outputPath = path.join(root, 'evidence', 'report.json');
