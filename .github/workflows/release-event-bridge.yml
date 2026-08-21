@@ -1,0 +1,66 @@
+name: Release event bridge
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: engineering-process-release-event-bridge
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  activate:
+    name: Activate unverified Release PR head
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Create short-lived engineering-process token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          owner: phuongnse
+          repositories: engineering-process
+          permission-checks: read
+          permission-contents: write
+          permission-metadata: read
+          permission-pull-requests: read
+          permission-workflows: write
+
+      - name: Activate the exact unverified head
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          repository="phuongnse/engineering-process"
+          branch="automation/release/next"
+          pr_number="$(gh api "repos/$repository/pulls?state=open&head=phuongnse:$branch" \
+            --jq '.[0].number // empty')"
+          if test -z "$pr_number"; then
+            echo "No open engineering-process Release PR."
+            exit 0
+          fi
+          test "$(gh api "repos/$repository/pulls/$pr_number" --jq .base.ref)" = main
+          test "$(gh api "repos/$repository/pulls/$pr_number" --jq .head.ref)" = "$branch"
+          head_sha="$(gh api "repos/$repository/git/ref/heads/$branch" --jq .object.sha)"
+          test "$(gh api "repos/$repository/pulls/$pr_number" --jq .head.sha)" = "$head_sha"
+          check_count="$(gh api "repos/$repository/commits/$head_sha/check-runs" --jq .total_count)"
+          if test "$check_count" -gt 0; then
+            echo "Release PR head $head_sha already has checks; no activation needed."
+            exit 0
+          fi
+          tree_sha="$(gh api "repos/$repository/git/commits/$head_sha" --jq .tree.sha)"
+          activation_sha="$(gh api --method POST "repos/$repository/git/commits" \
+            -f message="chore(release): activate validation for ${head_sha:0:12}" \
+            -f tree="$tree_sha" \
+            -f "parents[]=$head_sha" \
+            --jq .sha)"
+          gh api --method PATCH "repos/$repository/git/refs/heads/$branch" \
+            -f sha="$activation_sha" \
+            -F force=false \
+            --silent
+          echo "Activated Release PR #$pr_number at $activation_sha with unchanged tree $tree_sha."

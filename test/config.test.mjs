@@ -27,6 +27,10 @@ const repositoryProtections = await readFile(
   new URL('scripts/configure-repository-protections.mjs', root),
   'utf8',
 );
+const releaseEventBridge = await readFile(
+  new URL('.github/workflows/release-event-bridge.yml', root),
+  'utf8',
+);
 
 test('global configuration has a closed repository boundary', () => {
   assert.deepEqual(config.repositories, repositories);
@@ -148,4 +152,14 @@ test('single-maintainer protection covers every allowlisted repository', () => {
   assert.match(repositoryProtections, /required_status_checks: \{ strict: true, contexts \}/);
   assert.match(repositoryProtections, /allow_force_pushes: false/);
   assert.match(repositoryProtections, /allow_deletions: false/);
+});
+
+test('release event bridge is bounded, idempotent, and tree preserving', () => {
+  assert.match(releaseEventBridge, /repositories: engineering-process/);
+  assert.match(releaseEventBridge, /branch="automation\/release\/next"/);
+  assert.match(releaseEventBridge, /check_count/);
+  assert.match(releaseEventBridge, /\.tree\.sha/);
+  assert.match(releaseEventBridge, /-f "parents\[\]=\$head_sha"/);
+  assert.match(releaseEventBridge, /-F force=false/);
+  assert.doesNotMatch(releaseEventBridge, /RENOVATE_ENABLED|personal.access|\bPAT\b/);
 });
