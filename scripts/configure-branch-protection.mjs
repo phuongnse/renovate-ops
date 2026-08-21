@@ -42,4 +42,6 @@ if (result.status !== 0) {
   );
 }
 
-process.stdout.write('Protected main with required CI, review, code ownership, and linear history.\n');
+process.stdout.write(
+  'Protected main with required CI, independent verification, and linear history.\n',
+);
