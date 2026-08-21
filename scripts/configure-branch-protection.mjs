@@ -14,7 +14,6 @@ const protection = {
     required_approving_review_count: 1,
     require_last_push_approval: true,
   },
-  restrictions: null,
   required_linear_history: true,
   allow_force_pushes: false,
   allow_deletions: false,
@@ -44,7 +43,7 @@ const result = spawnSync(
 if (result.error) throw result.error;
 if (result.status !== 0) {
   throw new Error(
-    'branch protection failed; private repositories require a GitHub plan that supports this control',
+    'branch protection failed; verify repository visibility, plan, and owner-compatible settings',
   );
 }
 
