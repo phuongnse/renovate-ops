@@ -55,7 +55,7 @@ test('runtime and actions are immutable and Docker socket is unavailable', () =>
   assert.match(workflow, /actions\/checkout@[a-f0-9]{40}/);
   assert.match(workflow, /actions\/create-github-app-token@[a-f0-9]{40}/);
   assert.match(workflow, /renovatebot\/github-action@[a-f0-9]{40}/);
-  assert.match(workflow, /renovate-version: sha256:[a-f0-9]{64}/);
+  assert.match(workflow, /renovate-version: \d+\.\d+\.\d+@sha256:[a-f0-9]{64}/);
   assert.doesNotMatch(workflow, /mount-docker-socket:\s*true/);
   assert.match(workflow, /timeout-minutes: 55/);
   assert.match(workflow, /cancel-in-progress: false/);
