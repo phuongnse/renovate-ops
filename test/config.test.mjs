@@ -27,10 +27,6 @@ const repositoryProtections = await readFile(
   new URL('scripts/configure-repository-protections.mjs', root),
   'utf8',
 );
-const releaseEventBridge = await readFile(
-  new URL('.github/workflows/release-event-bridge.yml', root),
-  'utf8',
-);
 
 test('global configuration has a closed repository boundary', () => {
   assert.deepEqual(config.repositories, repositories);
@@ -154,12 +150,11 @@ test('single-maintainer protection covers every allowlisted repository', () => {
   assert.match(repositoryProtections, /allow_deletions: false/);
 });
 
-test('release event bridge is bounded, idempotent, and tree preserving', () => {
-  assert.match(releaseEventBridge, /repositories: engineering-process/);
-  assert.match(releaseEventBridge, /branch="automation\/release\/next"/);
-  assert.match(releaseEventBridge, /check_count/);
-  assert.match(releaseEventBridge, /\.tree\.sha/);
-  assert.match(releaseEventBridge, /-f "parents\[\]=\$head_sha"/);
-  assert.match(releaseEventBridge, /-F force=false/);
-  assert.doesNotMatch(releaseEventBridge, /RENOVATE_ENABLED|personal.access|\bPAT\b/);
+test('event-driven review binds dispatch inputs to the live pull request', () => {
+  assert.match(independentWorkflow, /reviewed_pr_number:/);
+  assert.match(independentWorkflow, /reviewed_head_sha:/);
+  assert.match(independentWorkflow, /repos\/\$GITHUB_REPOSITORY\/pulls\/\$REQUESTED_PR_NUMBER/);
+  assert.match(independentWorkflow, /\.head\.sha[^\n]+REQUESTED_HEAD_SHA/);
+  assert.match(independentWorkflow, /GITHUB_EVENT_PATH: \$\{\{ steps\.review\.outputs\.event_path \}\}/);
+  assert.doesNotMatch(independentWorkflow, /\bschedule:|workflow_dispatch:/);
 });
