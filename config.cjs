@@ -1,6 +1,8 @@
 'use strict';
 
-const repositories = require('./repositories.json');
+const repositories = process.env.RENOVATE_REPOSITORIES
+  ? process.env.RENOVATE_REPOSITORIES.split(',')
+  : require('./repositories.json');
 
 module.exports = {
   platform: 'github',

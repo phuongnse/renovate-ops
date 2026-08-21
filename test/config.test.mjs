@@ -26,6 +26,19 @@ test('global configuration has a closed repository boundary', () => {
   assert.equal(config.requireConfig, 'required');
   assert.equal(new Set(repositories).size, repositories.length);
   assert.ok(repositories.every((repository) => /^phuongnse\/[a-z0-9._-]+$/i.test(repository)));
+
+  const containerRepositories = JSON.parse(
+    execFileSync(
+      process.execPath,
+      ['-e', 'process.stdout.write(JSON.stringify(require("./config.cjs").repositories))'],
+      {
+        cwd: new URL('.', root),
+        encoding: 'utf8',
+        env: { ...process.env, RENOVATE_REPOSITORIES: repositories.join(',') },
+      },
+    ),
+  );
+  assert.deepEqual(containerRepositories, repositories);
 });
 
 test('only the process adoption command is executable', () => {
@@ -43,8 +56,13 @@ test('workflow scopes a short-lived app token to the same allowlist', () => {
     encoding: 'utf8',
   });
   for (const repository of repositories) assert.match(output, new RegExp(`${repository}(?:\\n|$)`));
+  assert.match(output, new RegExp(`renovate_repositories=${repositories.join(',')}`));
   assert.match(workflow, /actions\/create-github-app-token@[a-f0-9]{40}/);
   assert.match(workflow, /repositories: \$\{\{ steps\.allowlist\.outputs\.repositories \}\}/);
+  assert.match(
+    workflow,
+    /RENOVATE_REPOSITORIES: \$\{\{ steps\.allowlist\.outputs\.renovate_repositories \}\}/,
+  );
   assert.match(workflow, /RENOVATE_APP_CLIENT_ID/);
   assert.match(workflow, /RENOVATE_APP_PRIVATE_KEY/);
   assert.match(workflow, /vars\.RENOVATE_ENABLED == 'true'/);

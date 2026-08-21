@@ -23,3 +23,4 @@ const delimiter = 'RENOVATE_REPOSITORIES_EOF';
 process.stdout.write(`repositories<<${delimiter}\n`);
 process.stdout.write(`${repositories.join('\n')}\n`);
 process.stdout.write(`${delimiter}\n`);
+process.stdout.write(`renovate_repositories=${repositories.join(',')}\n`);
