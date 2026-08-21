@@ -23,6 +23,10 @@ const independentWorkflow = await readFile(
   'utf8',
 );
 const ciWorkflow = await readFile(new URL('.github/workflows/ci.yml', root), 'utf8');
+const repositoryProtections = await readFile(
+  new URL('scripts/configure-repository-protections.mjs', root),
+  'utf8',
+);
 
 test('global configuration has a closed repository boundary', () => {
   assert.deepEqual(config.repositories, repositories);
@@ -135,4 +139,13 @@ test('independent review resolves verifier code from the called workflow SHA', (
     ciWorkflow,
     /uses: phuongnse\/renovate-ops\/\.github\/workflows\/independent-review\.yml@[0-9a-f]{40}/,
   );
+});
+
+test('single-maintainer protection covers every allowlisted repository', () => {
+  for (const repository of repositories) assert.match(repositoryProtections, new RegExp(repository));
+  assert.match(repositoryProtections, /required_pull_request_reviews: null/);
+  assert.match(repositoryProtections, /'independent-review \/ independent-review'/);
+  assert.match(repositoryProtections, /required_status_checks: \{ strict: true, contexts \}/);
+  assert.match(repositoryProtections, /allow_force_pushes: false/);
+  assert.match(repositoryProtections, /allow_deletions: false/);
 });
