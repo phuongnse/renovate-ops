@@ -149,6 +149,10 @@ test('independent review resolves verifier code from the called workflow SHA', (
     ciWorkflow,
     /uses: phuongnse\/renovate-ops\/\.github\/workflows\/independent-review\.yml@[0-9a-f]{40}/,
   );
+  assert.match(
+    ciWorkflow,
+    /independent-review:\n    name: independent-review\n    if: github\.event_name == 'pull_request'/,
+  );
 });
 
 test('single-maintainer protection covers every allowlisted repository', () => {

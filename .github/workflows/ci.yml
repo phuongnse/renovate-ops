@@ -11,6 +11,7 @@ permissions:
 jobs:
   independent-review:
     name: independent-review
+    if: github.event_name == 'pull_request'
     permissions:
       contents: read
     uses: phuongnse/renovate-ops/.github/workflows/independent-review.yml@48a644b081ea9d098796432750f892e2e3f44614
