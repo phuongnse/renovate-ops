@@ -103,6 +103,15 @@ jobs:
         if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'production')
         run: node scripts/validate-renovate-log.mjs "$LOG_FILE" repositories.json
 
+      - name: Finalize verified process adoption pull requests
+        if: github.event_name == 'repository_dispatch'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: >-
+          node scripts/finalize-adoption-prs.mjs
+          "$GITHUB_EVENT_PATH"
+          repositories.json
+
       - name: Open or update an operations incident
         if: failure() && (github.event_name == 'repository_dispatch' || inputs.mode == 'production')
         env:

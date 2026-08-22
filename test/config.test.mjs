@@ -88,6 +88,11 @@ test('production Renovate is activated by a bounded authenticated release event'
   );
   assert.match(workflow, /LOG_FILE: \/tmp\/renovate-production\.ndjson/);
   assert.match(workflow, /node scripts\/validate-renovate-log\.mjs "\$LOG_FILE" repositories\.json/);
+  assert.match(
+    workflow,
+    /node scripts\/finalize-adoption-prs\.mjs\n          "\$GITHUB_EVENT_PATH"\n          repositories\.json/,
+  );
+  assert.match(workflow, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
 });
 
 test('runtime and actions are immutable and Docker socket is unavailable', () => {
