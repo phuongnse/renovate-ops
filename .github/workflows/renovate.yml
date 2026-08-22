@@ -32,6 +32,10 @@ jobs:
       (inputs.mode == 'dry-run' || vars.RENOVATE_ENABLED == 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 55
+    env:
+      LOG_FILE: /tmp/renovate-production.ndjson
+      LOG_FILE_FORMAT: json
+      LOG_FILE_LEVEL: info
     steps:
       - name: Check out operations config
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,6 +49,9 @@ jobs:
       - name: Resolve repository allowlist
         id: allowlist
         run: node scripts/export-repositories.mjs >> "$GITHUB_OUTPUT"
+
+      - name: Require a fresh bounded outcome log
+        run: test ! -e "$LOG_FILE"
 
       - name: Create short-lived GitHub App token
         id: app-token
@@ -72,7 +79,7 @@ jobs:
           configurationFile: config.cjs
           token: ${{ steps.app-token.outputs.token }}
           renovate-version: 44.37.1@sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
-          env-regex: '^(?:RENOVATE_\w+|LOG_LEVEL|LOG_FORMAT|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
+          env-regex: '^(?:RENOVATE_\w+|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
         env:
           LOG_FORMAT: json
           LOG_LEVEL: info
@@ -86,11 +93,15 @@ jobs:
           configurationFile: config.cjs
           token: ${{ steps.app-token.outputs.token }}
           renovate-version: 44.37.1@sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
-          env-regex: '^(?:RENOVATE_\w+|LOG_LEVEL|LOG_FORMAT|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
+          env-regex: '^(?:RENOVATE_\w+|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
         env:
           LOG_FORMAT: json
           LOG_LEVEL: info
           RENOVATE_REPOSITORIES: ${{ steps.allowlist.outputs.renovate_repositories }}
+
+      - name: Validate every production repository outcome
+        if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'production')
+        run: node scripts/validate-renovate-log.mjs "$LOG_FILE" repositories.json
 
       - name: Open or update an operations incident
         if: failure() && (github.event_name == 'repository_dispatch' || inputs.mode == 'production')
