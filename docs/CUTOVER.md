@@ -18,7 +18,7 @@ The Mend-hosted Renovate App is not removed during bootstrap.
 3. Set repository variable `RENOVATE_ENABLED=true` in `renovate-ops`.
 4. Immediately dispatch one self-hosted `production` run.
 5. Confirm the bot identity is the private GitHub App, existing branches are handled without duplicate PRs, and the Dependency Dashboards remain coherent.
-6. Confirm the next scheduled run succeeds and no incident issue remains open.
+6. Confirm an authenticated release-event run succeeds and no incident issue remains open.
 
 Only after these checks should the hosted App be fully uninstalled if it serves no other repository.
 

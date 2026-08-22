@@ -2,7 +2,7 @@
 
 ## Normal operation
 
-The `Renovate` workflow runs at minute 17 every hour when repository variable `RENOVATE_ENABLED` is `true`. Scheduled invocations are production runs. Manual invocations default to full dry-run and can run before activation; manual production requires both an explicit `production` choice and `RENOVATE_ENABLED=true`.
+The `Renovate` workflow runs in production when the installed GitHub App delivers a bounded `engineering-process-published` repository event and repository variable `RENOVATE_ENABLED` is `true`. The workflow validates the App sender, publisher repository, package, tag/version pair, and attestation digest before creating its separate allowlisted installation token. Manual invocations default to full dry-run and can run before activation; manual production remains an explicit break-glass canary and requires `RENOVATE_ENABLED=true`.
 
 Review the public operations repository's Actions history and any open issue named `Renovate production run is failing`. Successful recovery closes that incident automatically. Never place credentials or private-repository data in workflow logs or incident comments.
 
@@ -13,7 +13,7 @@ Review the public operations repository's Actions history and any open issue nam
 3. In the GitHub App installation settings, add selected access to the repository.
 4. Add the exact full name to `repositories.json` through a pull request.
 5. Run `npm run check`, merge, and dispatch a dry-run.
-6. Confirm the log shows the expected config and proposed changes before the next scheduled production run.
+6. Confirm the log shows the expected config and proposed changes before accepting a release-event production run.
 
 Removing a repository is the reverse: remove it from `repositories.json` first, merge, then remove App installation access.
 

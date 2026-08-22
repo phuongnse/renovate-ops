@@ -20,7 +20,7 @@
 - No onboarding of repositories without a committed Renovate configuration.
 - Third-party actions use immutable commit SHAs; the Renovate image uses a multi-platform OCI digest.
 - No personal access token, arbitrary shell executor, arbitrary post-upgrade command, plugin loading, lifecycle scripts, or Docker socket.
-- Scheduled runs serialize and time out before the one-hour installation-token lifetime.
+- Authenticated release-event and explicit canary runs serialize and time out before the one-hour installation-token lifetime.
 - Production failures open or update an issue in the public operations repository; recovery closes it. Incident content contains no credential or private-repository data.
 - Renovate and process-adoption PRs are draft and never automerged.
 

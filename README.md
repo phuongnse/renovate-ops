@@ -4,7 +4,7 @@ Publicly auditable control plane for the self-hosted Renovate instance that mana
 
 ## Operating model
 
-The hourly GitHub Actions job creates a short-lived installation token for a private GitHub App, starts an immutable Renovate container, and processes only `repositories.json`. Repository configuration remains local to each consumer. Renovate may create draft dependency and process-adoption PRs, but it never merges them.
+An authenticated `engineering-process-published` event creates a short-lived installation token for the private GitHub App, starts the immutable Renovate container, and processes only `repositories.json`. Repository configuration remains local to each consumer. Delivery is at least once and Renovate is idempotent; there is no scheduled production poll. Renovate may create draft dependency and process-adoption PRs, but it never merges them.
 
 The only permitted post-upgrade command is:
 
@@ -24,7 +24,7 @@ Shell execution, arbitrary scripts, plugins, repository discovery, and Docker so
 6. Run `node scripts/configure-github.mjs`. It writes the Client ID and private key to encrypted repository configuration, keeps `RENOVATE_ENABLED=false`, then deletes the local response.
 7. Install the App on selected repositories: `renovate-ops`, `engineering-process`, `axis`, and `axis-reference-product`.
 8. Dispatch `Renovate` with `mode=dry-run`. Review all four repository logs.
-9. Follow `docs/CUTOVER.md`; do not let hosted and self-hosted Renovate run in production concurrently. Scheduled and manual production runs remain disabled until `RENOVATE_ENABLED=true`.
+9. Follow `docs/CUTOVER.md`; do not let hosted and self-hosted Renovate run in production concurrently. Release-event and manual production runs remain disabled until `RENOVATE_ENABLED=true`.
 
 ## Adding a consumer
 
@@ -33,7 +33,7 @@ Adding a repository is an auditable authorization change:
 1. Prepare and merge the consumer's managed Renovate/process-adoption configuration.
 2. Grant the GitHub App selected-repository access to the consumer.
 3. Add its exact `phuongnse/name` to `repositories.json` in a reviewed PR.
-4. Run a manual dry-run and review the repository result before relying on the hourly schedule.
+4. Run a manual dry-run and review the repository result before accepting the first release event.
 
 Both Renovate's target list and the installation token's repository scope are derived from the same allowlist.
 
