@@ -86,6 +86,8 @@ test('production Renovate is activated by a bounded authenticated release event'
     workflow,
     /github\.event_name == 'repository_dispatch' \|\| \(github\.event_name == 'workflow_dispatch'/,
   );
+  assert.match(workflow, /LOG_FILE: \/tmp\/renovate-production\.ndjson/);
+  assert.match(workflow, /node scripts\/validate-renovate-log\.mjs "\$LOG_FILE" repositories\.json/);
 });
 
 test('runtime and actions are immutable and Docker socket is unavailable', () => {
