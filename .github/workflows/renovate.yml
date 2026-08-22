@@ -1,8 +1,8 @@
 name: Renovate
 
 on:
-  schedule:
-    - cron: "17 * * * *"
+  repository_dispatch:
+    types: [engineering-process-published]
   workflow_dispatch:
     inputs:
       mode:
@@ -24,8 +24,12 @@ permissions:
 
 jobs:
   renovate:
-    name: Renovate (${{ github.event_name == 'schedule' && 'production' || inputs.mode }})
-    if: (github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run') || vars.RENOVATE_ENABLED == 'true'
+    name: Renovate (${{ github.event_name == 'repository_dispatch' && 'release-event' || inputs.mode }})
+    if: >-
+      (github.event_name == 'repository_dispatch' &&
+      vars.RENOVATE_ENABLED == 'true') ||
+      (github.event_name == 'workflow_dispatch' &&
+      (inputs.mode == 'dry-run' || vars.RENOVATE_ENABLED == 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
@@ -33,6 +37,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Validate authenticated release event
+        if: github.event_name == 'repository_dispatch'
+        run: node scripts/validate-release-event.mjs "$GITHUB_EVENT_PATH"
 
       - name: Resolve repository allowlist
         id: allowlist
@@ -72,7 +80,7 @@ jobs:
           RENOVATE_REPOSITORIES: ${{ steps.allowlist.outputs.renovate_repositories }}
 
       - name: Renovate production
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'production')
+        if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'production')
         uses: renovatebot/github-action@e09d604f8f803bb527bd8321ed5be06c460b8682 # v46.2.2
         with:
           configurationFile: config.cjs
@@ -85,7 +93,7 @@ jobs:
           RENOVATE_REPOSITORIES: ${{ steps.allowlist.outputs.renovate_repositories }}
 
       - name: Open or update an operations incident
-        if: failure() && (github.event_name == 'schedule' || inputs.mode == 'production')
+        if: failure() && (github.event_name == 'repository_dispatch' || inputs.mode == 'production')
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -100,7 +108,7 @@ jobs:
           fi
 
       - name: Resolve the operations incident after recovery
-        if: success() && (github.event_name == 'schedule' || inputs.mode == 'production')
+        if: success() && (github.event_name == 'repository_dispatch' || inputs.mode == 'production')
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

@@ -78,6 +78,16 @@ test('workflow scopes a short-lived app token to the same allowlist', () => {
   assert.doesNotMatch(workflow, /RENOVATE_PAT|PERSONAL_ACCESS_TOKEN/);
 });
 
+test('production Renovate is activated by a bounded authenticated release event', () => {
+  assert.match(workflow, /repository_dispatch:\n    types: \[engineering-process-published\]/);
+  assert.doesNotMatch(workflow, /^  schedule:/m);
+  assert.match(workflow, /node scripts\/validate-release-event\.mjs "\$GITHUB_EVENT_PATH"/);
+  assert.match(
+    workflow,
+    /github\.event_name == 'repository_dispatch' \|\| \(github\.event_name == 'workflow_dispatch'/,
+  );
+});
+
 test('runtime and actions are immutable and Docker socket is unavailable', () => {
   assert.match(workflow, /actions\/checkout@[a-f0-9]{40}/);
   assert.match(workflow, /actions\/create-github-app-token@[a-f0-9]{40}/);
