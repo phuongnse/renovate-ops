@@ -33,7 +33,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:
-      LOG_FILE: /tmp/renovate-production.ndjson
+      RENOVATE_ATTEMPT_ONE_LOG: /tmp/renovate-production-attempt-1.ndjson
+      RENOVATE_ATTEMPT_TWO_LOG: /tmp/renovate-production-attempt-2.ndjson
+      RENOVATE_DRY_RUN_LOG: /tmp/renovate-dry-run.ndjson
       LOG_FILE_FORMAT: json
       LOG_FILE_LEVEL: info
     steps:
@@ -50,8 +52,11 @@ jobs:
         id: allowlist
         run: node scripts/export-repositories.mjs >> "$GITHUB_OUTPUT"
 
-      - name: Require a fresh bounded outcome log
-        run: test ! -e "$LOG_FILE"
+      - name: Require fresh bounded outcome logs
+        run: |
+          test ! -e "$RENOVATE_DRY_RUN_LOG"
+          test ! -e "$RENOVATE_ATTEMPT_ONE_LOG"
+          test ! -e "$RENOVATE_ATTEMPT_TWO_LOG"
 
       - name: Create short-lived GitHub App token
         id: app-token
@@ -81,12 +86,13 @@ jobs:
           renovate-version: 44.37.1@sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
           env-regex: '^(?:RENOVATE_\w+|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
         env:
+          LOG_FILE: ${{ env.RENOVATE_DRY_RUN_LOG }}
           LOG_FORMAT: json
           LOG_LEVEL: info
           RENOVATE_DRY_RUN: full
           RENOVATE_REPOSITORIES: ${{ steps.allowlist.outputs.renovate_repositories }}
 
-      - name: Renovate production
+      - name: Renovate production attempt 1
         if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'production')
         uses: renovatebot/github-action@e09d604f8f803bb527bd8321ed5be06c460b8682 # v46.2.2
         with:
@@ -95,16 +101,45 @@ jobs:
           renovate-version: 44.37.1@sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
           env-regex: '^(?:RENOVATE_\w+|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
         env:
+          LOG_FILE: ${{ env.RENOVATE_ATTEMPT_ONE_LOG }}
           LOG_FORMAT: json
           LOG_LEVEL: info
           RENOVATE_REPOSITORIES: ${{ steps.allowlist.outputs.renovate_repositories }}
 
-      - name: Validate every production repository outcome
+      - name: Classify production attempt 1
+        id: production_attempt_one
         if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'production')
-        run: node scripts/validate-renovate-log.mjs "$LOG_FILE" repositories.json
+        run: node scripts/classify-renovate-log.mjs "$RENOVATE_ATTEMPT_ONE_LOG" repositories.json
+
+      - name: Wait before the single bounded recovery attempt
+        if: steps.production_attempt_one.outputs.status == 'retryable'
+        run: node scripts/wait-for-renovate-retry.mjs
+
+      - name: Renovate production attempt 2
+        if: steps.production_attempt_one.outputs.status == 'retryable'
+        uses: renovatebot/github-action@e09d604f8f803bb527bd8321ed5be06c460b8682 # v46.2.2
+        with:
+          configurationFile: config.cjs
+          token: ${{ steps.app-token.outputs.token }}
+          renovate-version: 44.37.1@sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
+          env-regex: '^(?:RENOVATE_\w+|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
+        env:
+          LOG_FILE: ${{ env.RENOVATE_ATTEMPT_TWO_LOG }}
+          LOG_FILE_LEVEL: debug
+          LOG_FORMAT: json
+          LOG_LEVEL: info
+          RENOVATE_REPOSITORIES: ${{ steps.allowlist.outputs.renovate_repositories }}
+
+      - name: Validate production attempt 2
+        id: production_attempt_two
+        if: steps.production_attempt_one.outputs.status == 'retryable'
+        run: node scripts/validate-renovate-log.mjs "$RENOVATE_ATTEMPT_TWO_LOG" repositories.json
 
       - name: Finalize verified process adoption pull requests
-        if: github.event_name == 'repository_dispatch'
+        if: >-
+          github.event_name == 'repository_dispatch' &&
+          (steps.production_attempt_one.outputs.status == 'passed' ||
+          steps.production_attempt_two.outcome == 'success')
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: >-

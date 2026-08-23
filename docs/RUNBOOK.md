@@ -6,6 +6,22 @@ The `Renovate` workflow runs in production when the installed GitHub App deliver
 
 Review the public operations repository's Actions history and any open issue named `Renovate production run is failing`. Successful recovery closes that incident automatically. Never place credentials or private-repository data in workflow logs or incident comments.
 
+Each production attempt has a separate bounded NDJSON log. The first complete result
+is classified. `lockfile-error` and missing-completion outcomes wait 30 seconds and
+receive exactly one idempotent retry; malformed logs, unexpected or duplicate
+repositories, non-lockfile results, and non-retryable artifact failures stop
+immediately. A second failure opens or updates the incident and never finalizes a
+partial adoption.
+
+## Adoption branch ownership
+
+The `automation/renovate/engineering-process-authority` branch is exclusively
+bot-owned. Do not amend, rebase, or push project cleanup onto it. Use a normal reviewed
+branch for a one-time combined cutover, close any previously edited bot PR, and allow
+the next release event to create a fresh bot-owned branch. Future authority updates
+must remain fully generated so Renovate can update them without an Edited/Blocked
+notification.
+
 ## Add a repository
 
 1. Verify the repository is owned by `phuongnse`, has required branch protection, and contains a reviewed Renovate config.
@@ -29,10 +45,10 @@ Rotate immediately if the key may have been exposed. Do not wait for the dry-run
 ## Failed production run
 
 1. Open the linked workflow run from the incident issue.
-2. Determine whether failure occurred during token minting, container startup, lookup, lock generation, or post-upgrade adoption.
-3. Do not broaden permissions or `allowedCommands` to bypass a failure.
-4. Fix through a reviewed PR, dispatch a dry-run, then dispatch one production canary.
-5. Confirm the incident closes after a successful production run.
+2. Read the attempt classification and bounded diagnostic; determine whether failure occurred during token minting, container startup, lookup, lock generation, or post-upgrade adoption.
+3. Do not rerun a release event whose built-in retry is still active, and do not broaden permissions or `allowedCommands` to bypass a failure.
+4. For a deterministic failure, fix the correct owner through a reviewed PR and dispatch a dry-run.
+5. Manual production remains break-glass recovery for an event that failed before the retry-capable workflow existed; record the original run and confirm the incident closes after the canary.
 
 ## Emergency stop and rollback
 
