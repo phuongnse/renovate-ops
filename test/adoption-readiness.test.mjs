@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   finalizeAdoptionPullRequests,
   requiredCheckOutcome,
   satisfiedAdoptionBody,
 } from '../scripts/finalize-adoption-prs.mjs';
+
+const finalizer = fileURLToPath(new URL('../scripts/finalize-adoption-prs.mjs', import.meta.url));
 
 function event() {
   return {
@@ -82,6 +86,14 @@ test('managed adoption evidence becomes satisfied without changing Renovate meta
   assert.match(updated, /<!--renovate-debug:eyJ0YXJnZXRCcmFuY2giOiJtYWluIn0=-->\n$/);
   assert.equal(satisfiedAdoptionBody(updated), updated);
   assert.throws(() => satisfiedAdoptionBody('missing markers'), /managed markers/);
+});
+
+test('finalizer CLI names the consumer manifest contract', () => {
+  const result = spawnSync(process.execPath, [finalizer], { encoding: 'utf8' });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /EVENT_PATH CONSUMER_MANIFEST/);
+  assert.doesNotMatch(result.stderr, /REPOSITORIES_PATH/);
 });
 
 test('required checks distinguish pending and terminal failure', () => {

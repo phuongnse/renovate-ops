@@ -298,7 +298,7 @@ export async function finalizeAdoptionPullRequests({
 
 async function main() {
   if (process.argv.length !== 4) {
-    throw new Error('usage: finalize-adoption-prs.mjs EVENT_PATH REPOSITORIES_PATH');
+    throw new Error('usage: finalize-adoption-prs.mjs EVENT_PATH CONSUMER_MANIFEST');
   }
   const readBounded = async (path, label) => {
     const before = await lstat(path);
