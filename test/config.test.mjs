@@ -27,6 +27,8 @@ const repositoryProtections = await readFile(
   new URL('scripts/configure-repository-protections.mjs', root),
   'utf8',
 );
+const readme = await readFile(new URL('README.md', root), 'utf8');
+const runbook = await readFile(new URL('docs/RUNBOOK.md', root), 'utf8');
 
 test('global configuration has a closed repository boundary', () => {
   assert.deepEqual(config.repositories, repositories);
@@ -86,13 +88,29 @@ test('production Renovate is activated by a bounded authenticated release event'
     workflow,
     /github\.event_name == 'repository_dispatch' \|\| \(github\.event_name == 'workflow_dispatch'/,
   );
-  assert.match(workflow, /LOG_FILE: \/tmp\/renovate-production\.ndjson/);
-  assert.match(workflow, /node scripts\/validate-renovate-log\.mjs "\$LOG_FILE" repositories\.json/);
+  assert.match(workflow, /RENOVATE_ATTEMPT_ONE_LOG: \/tmp\/renovate-production-attempt-1\.ndjson/);
+  assert.match(workflow, /RENOVATE_ATTEMPT_TWO_LOG: \/tmp\/renovate-production-attempt-2\.ndjson/);
+  assert.match(workflow, /node scripts\/classify-renovate-log\.mjs "\$RENOVATE_ATTEMPT_ONE_LOG" repositories\.json/);
+  assert.match(workflow, /node scripts\/wait-for-renovate-retry\.mjs/);
+  assert.match(workflow, /node scripts\/validate-renovate-log\.mjs "\$RENOVATE_ATTEMPT_TWO_LOG" repositories\.json/);
+  assert.equal((workflow.match(/name: Renovate production attempt [12]/g) ?? []).length, 2);
+  assert.match(
+    workflow,
+    /steps\.production_attempt_one\.outputs\.status == 'passed' \|\|\n\s+steps\.production_attempt_two\.outcome == 'success'/,
+  );
   assert.match(
     workflow,
     /node scripts\/finalize-adoption-prs\.mjs\n          "\$GITHUB_EVENT_PATH"\n          repositories\.json/,
   );
   assert.match(workflow, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
+});
+
+test('process adoption branches remain bot-owned after the reviewed cutover', () => {
+  for (const document of [readme, runbook]) {
+    assert.match(document, /automation\/renovate\/engineering-process-authority/);
+    assert.match(document, /bot-owned/i);
+    assert.match(document, /normal reviewed\s+branch/i);
+  }
 });
 
 test('runtime and actions are immutable and Docker socket is unavailable', () => {

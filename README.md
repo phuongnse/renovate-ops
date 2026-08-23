@@ -6,6 +6,18 @@ Publicly auditable control plane for the self-hosted Renovate instance that mana
 
 An authenticated `engineering-process-published` event creates a short-lived installation token for the private GitHub App, starts the immutable Renovate container, and processes only `repositories.json`. Repository configuration remains local to each consumer. Delivery is at least once and Renovate is idempotent; there is no scheduled production poll. Renovate may create draft dependency and process-adoption PRs, but it never merges them.
 
+`automation/renovate/engineering-process-authority` is bot-owned. Humans and agents
+must not push commits to it: Renovate correctly blocks updates after a manual branch
+edit. A one-time process cutover that combines project cleanup with adoption uses a
+normal reviewed branch; after that cutover, every authority branch is generated and
+updated only by Renovate.
+
+A complete production attempt is strictly classified. Only a `lockfile-error` or a
+missing completion may receive one idempotent recovery attempt after 30 seconds, using
+the same authenticated event, allowlist, immutable runtime, and App authorization.
+Deterministic validation or artifact failures do not retry. Adoption finalization runs
+only after one complete attempt passes.
+
 The only permitted post-upgrade command is:
 
 ```text

@@ -31,11 +31,39 @@ jobs:
           node-version: 24.18.0
           cache: npm
 
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+
+      - name: Install published process runtime
+        uses: phuongnse/engineering-process@cb2563e5a90a644af5be596d9418bb13f065aa12 # v0.4.0
+        with:
+          project-root: .
+          requirements-lock: requirements/process.txt
+
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
 
-      - name: Validate policy and Renovate configuration
-        run: npm run check
+      - name: Validate complete process adoption candidate
+        if: >-
+          github.event_name == 'pull_request' &&
+          startsWith(github.head_ref, 'automation/renovate/engineering-process')
+        run: >-
+          processctl adoption check
+          --project-root .
+          --requirements-lock requirements/process.txt
+
+      - name: Validate process distribution and environment
+        run: |
+          processctl sync --project-root . --check
+          processctl doctor --project-root . --profile development
+          processctl doctor --project-root . --profile review
+
+      - name: Run governed process profiles
+        run: |
+          processctl verify --project-root . --profile development
+          processctl verify --project-root . --profile review
 
       - name: Check whitespace
         run: git diff --check
