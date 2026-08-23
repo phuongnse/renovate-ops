@@ -30,25 +30,39 @@ test('consumer manifest accepts one exact sorted bounded contract', () => {
   assert.deepEqual(manifestForConsumer(first), {
     schemaVersion: 1,
     consumers: [first],
+    exclusions: [],
   });
-  assert.deepEqual(validateConsumerManifest({ schemaVersion: 1, consumers: [first, second] }), {
+  assert.deepEqual(validateConsumerManifest({ schemaVersion: 1, consumers: [first, second], exclusions: [] }), {
     schemaVersion: 1,
     consumers: [first, second],
+    exclusions: [],
   });
+  assert.deepEqual(
+    validateConsumerManifest({
+      schemaVersion: 1,
+      consumers: [],
+      exclusions: [{ repository: first.repository, checkpoint: first.checkpoint, reason: 'intent-disabled' }],
+    }).consumers,
+    [],
+  );
 });
 
 test('consumer manifest rejects duplicates, ordering drift, and extra fields', () => {
   assert.throws(
-    () => validateConsumerManifest({ schemaVersion: 1, consumers: [first, first] }),
+    () => validateConsumerManifest({ schemaVersion: 1, consumers: [first, first], exclusions: [] }),
     /duplicate repositories/,
   );
   assert.throws(
-    () => validateConsumerManifest({ schemaVersion: 1, consumers: [second, first] }),
+    () => validateConsumerManifest({ schemaVersion: 1, consumers: [second, first], exclusions: [] }),
     /sorted by repository/,
   );
   assert.throws(
-    () => validateConsumerManifest({ schemaVersion: 1, consumers: [{ ...first, token: 'secret' }] }),
+    () => validateConsumerManifest({ schemaVersion: 1, consumers: [{ ...first, token: 'secret' }], exclusions: [] }),
     /unexpected fields/,
+  );
+  assert.throws(
+    () => validateConsumerManifest({ schemaVersion: 1, consumers: [], exclusions: [] }),
+    /classify at least one repository/,
   );
 });
 

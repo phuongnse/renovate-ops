@@ -36,6 +36,7 @@ function manifest(repository) {
       configPath: '.github/renovate.json5',
       configSha256: `sha256:${'b'.repeat(64)}`,
     }],
+    exclusions: [],
   };
 }
 

@@ -130,7 +130,7 @@ export async function readBoundedRenovateRecords(path) {
 
 async function main() {
   if (process.argv.length !== 4) {
-    throw new Error('usage: validate-renovate-log.mjs LOG_PATH REPOSITORIES_PATH');
+    throw new Error('usage: validate-renovate-log.mjs LOG_PATH CONSUMER_MANIFEST');
   }
   const records = await readBoundedRenovateRecords(process.argv[2]);
   const repositories = await readExpectedRepositories(process.argv[3]);

@@ -12,6 +12,7 @@ const REPOSITORY_PATTERN = /^phuongnse\/[a-z0-9._-]+$/;
 const BRANCH_PATTERN = /^(?!-)(?!.*\.\.)(?!.*\/\/)[A-Za-z0-9](?:[A-Za-z0-9._/-]*[A-Za-z0-9_-])?$/;
 const CHECKPOINT_PATTERN = /^[0-9a-f]{40}$/;
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
+const EXCLUSION_REASONS = new Set(['intent-absent', 'intent-disabled']);
 
 function exactKeys(value, expected, label) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -58,18 +59,44 @@ export function validateConsumer(value, label = 'consumer') {
   };
 }
 
+export function validateExclusion(value, label = 'exclusion') {
+  exactKeys(value, ['checkpoint', 'reason', 'repository'], label);
+  if (!REPOSITORY_PATTERN.test(value.repository)) {
+    throw new Error(`${label}.repository is invalid`);
+  }
+  if (!CHECKPOINT_PATTERN.test(value.checkpoint)) {
+    throw new Error(`${label}.checkpoint is invalid`);
+  }
+  if (!EXCLUSION_REASONS.has(value.reason)) {
+    throw new Error(`${label}.reason is invalid`);
+  }
+  return {
+    repository: value.repository,
+    checkpoint: value.checkpoint,
+    reason: value.reason,
+  };
+}
+
 export function validateConsumerManifest(value, label = 'consumer manifest') {
-  exactKeys(value, ['schemaVersion', 'consumers'], label);
+  exactKeys(value, ['schemaVersion', 'consumers', 'exclusions'], label);
   if (value.schemaVersion !== 1) throw new Error(`${label}.schemaVersion must be 1`);
   if (
     !Array.isArray(value.consumers)
-    || value.consumers.length < 1
     || value.consumers.length > MAX_CONSUMERS
   ) {
-    throw new Error(`${label}.consumers must contain between 1 and ${MAX_CONSUMERS} entries`);
+    throw new Error(`${label}.consumers must contain at most ${MAX_CONSUMERS} entries`);
+  }
+  if (!Array.isArray(value.exclusions) || value.exclusions.length > MAX_CONSUMERS) {
+    throw new Error(`${label}.exclusions must contain at most ${MAX_CONSUMERS} entries`);
+  }
+  if (value.consumers.length + value.exclusions.length < 1) {
+    throw new Error(`${label} must classify at least one repository`);
   }
   const consumers = value.consumers.map((consumer, index) => (
     validateConsumer(consumer, `${label}.consumers[${index}]`)
+  ));
+  const exclusions = value.exclusions.map((exclusion, index) => (
+    validateExclusion(exclusion, `${label}.exclusions[${index}]`)
   ));
   const repositories = consumers.map((consumer) => consumer.repository);
   if (new Set(repositories).size !== repositories.length) {
@@ -79,7 +106,19 @@ export function validateConsumerManifest(value, label = 'consumer manifest') {
   if (JSON.stringify(repositories) !== JSON.stringify(sorted)) {
     throw new Error(`${label}.consumers must be sorted by repository`);
   }
-  return { schemaVersion: 1, consumers };
+  const excludedRepositories = exclusions.map((exclusion) => exclusion.repository);
+  if (new Set(excludedRepositories).size !== excludedRepositories.length) {
+    throw new Error(`${label}.exclusions contains duplicate repositories`);
+  }
+  const sortedExclusions = [...excludedRepositories].sort();
+  if (JSON.stringify(excludedRepositories) !== JSON.stringify(sortedExclusions)) {
+    throw new Error(`${label}.exclusions must be sorted by repository`);
+  }
+  const overlap = repositories.filter((repository) => excludedRepositories.includes(repository));
+  if (overlap.length > 0) {
+    throw new Error(`${label} classifies a repository more than once`);
+  }
+  return { schemaVersion: 1, consumers, exclusions };
 }
 
 export async function readConsumerManifest(path) {
@@ -107,7 +146,7 @@ export async function readConsumerManifest(path) {
 }
 
 export function manifestForConsumer(value) {
-  return validateConsumerManifest({ schemaVersion: 1, consumers: [value] });
+  return validateConsumerManifest({ schemaVersion: 1, consumers: [value], exclusions: [] });
 }
 
 async function main() {

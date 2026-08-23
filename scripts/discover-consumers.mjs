@@ -179,6 +179,7 @@ export async function discoverConsumers({
     throw new Error(`GitHub App installation must expose between 1 and ${MAX_CONSUMERS} repositories in one bounded page`);
   }
   const consumers = [];
+  const exclusions = [];
   const repositories = [...installation.repositories].sort((left, right) => {
     const leftName = String(left.full_name);
     const rightName = String(right.full_name);
@@ -201,8 +202,20 @@ export async function discoverConsumers({
       repository.default_branch,
     );
     const selected = await configAtCheckpoint(api, repository.full_name, checkpoint);
-    if (selected === null) continue;
+    if (selected === null) {
+      exclusions.push({
+        repository: repository.full_name,
+        checkpoint,
+        reason: 'intent-absent',
+      });
+      continue;
+    }
     if (!validateConsumerIntent(selected.config, `${repository.full_name}/${selected.configPath}`)) {
+      exclusions.push({
+        repository: repository.full_name,
+        checkpoint,
+        reason: 'intent-disabled',
+      });
       continue;
     }
     if (repository.archived === true || repository.disabled === true) {
@@ -216,7 +229,7 @@ export async function discoverConsumers({
       configSha256: digest(selected.content),
     });
   }
-  return validateConsumerManifest({ schemaVersion: 1, consumers });
+  return validateConsumerManifest({ schemaVersion: 1, consumers, exclusions });
 }
 
 export async function revalidateConsumer(consumer, {
@@ -256,7 +269,11 @@ async function emitOutputs(manifest) {
   if (Buffer.byteLength(matrix) > MAX_MANIFEST_BYTES) {
     throw new Error('consumer matrix exceeds the output size contract');
   }
-  await appendFile(output, `matrix=${matrix}\ncount=${manifest.consumers.length}\n`, 'utf8');
+  await appendFile(
+    output,
+    `matrix=${matrix}\ncount=${manifest.consumers.length}\nexcluded=${manifest.exclusions.length}\n`,
+    'utf8',
+  );
 }
 
 async function main() {
@@ -279,7 +296,7 @@ async function main() {
     flag: 'wx',
   });
   await emitOutputs(manifest);
-  process.stdout.write(`${JSON.stringify({ consumers: manifest.consumers.length, status: 'passed' })}\n`);
+  process.stdout.write(`${JSON.stringify({ consumers: manifest.consumers.length, exclusions: manifest.exclusions, status: 'passed' })}\n`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -33,6 +33,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
+      count: ${{ steps.consumers.outputs.count }}
       matrix: ${{ steps.consumers.outputs.matrix }}
     steps:
       - name: Check out operations config
@@ -65,6 +66,7 @@ jobs:
   renovate:
     name: Renovate (${{ matrix.repository }})
     needs: discover
+    if: needs.discover.outputs.count != '0'
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     strategy:
@@ -213,7 +215,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Open or update an operations incident
-        if: needs.discover.result != 'success' || needs.renovate.result != 'success'
+        if: >-
+          needs.discover.result != 'success' ||
+          (needs.discover.outputs.count != '0' && needs.renovate.result != 'success')
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -228,7 +232,9 @@ jobs:
           fi
 
       - name: Resolve the operations incident after recovery
-        if: needs.discover.result == 'success' && needs.renovate.result == 'success'
+        if: >-
+          needs.discover.result == 'success' &&
+          (needs.discover.outputs.count == '0' || needs.renovate.result == 'success')
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
