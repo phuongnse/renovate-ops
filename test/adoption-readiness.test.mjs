@@ -22,6 +22,19 @@ function event() {
   };
 }
 
+function manifest(repository) {
+  return {
+    schemaVersion: 1,
+    consumers: [{
+      repository,
+      defaultBranch: 'main',
+      checkpoint: 'a'.repeat(40),
+      configPath: '.github/renovate.json5',
+      configSha256: `sha256:${'b'.repeat(64)}`,
+    }],
+  };
+}
+
 function body() {
   return `<!-- engineering-process:pr-description:start -->
 ## Summary
@@ -133,7 +146,7 @@ test('finalizer binds exact PR, waits for checks, updates evidence, and marks re
   const result = await finalizeAdoptionPullRequests({
     event: event(),
     fetchImpl,
-    repositories: ['phuongnse/renovate-ops', 'phuongnse/engineering-process'],
+    manifest: manifest('phuongnse/engineering-process'),
     sleep: async (milliseconds) => sleeps.push(milliseconds),
     token: 'installation-token-value',
   });
@@ -183,7 +196,7 @@ test('finalizer fails closed before PR mutation when a required check fails', as
     finalizeAdoptionPullRequests({
       event: event(),
       fetchImpl,
-      repositories: ['phuongnse/renovate-ops', 'phuongnse/engineering-process'],
+      manifest: manifest('phuongnse/engineering-process'),
       sleep: async () => {},
       token: 'installation-token-value',
     }),
@@ -211,7 +224,7 @@ test('repeated release events accept repositories that already adopted the exact
   const result = await finalizeAdoptionPullRequests({
     event: event(),
     fetchImpl,
-    repositories: ['phuongnse/renovate-ops', 'phuongnse/engineering-process'],
+    manifest: manifest('phuongnse/engineering-process'),
     sleep: async () => {},
     token: 'installation-token-value',
   });
@@ -219,4 +232,38 @@ test('repeated release events accept repositories that already adopted the exact
   assert.deepEqual(result.alreadyAdopted, ['phuongnse/engineering-process']);
   assert.deepEqual(result.ready, []);
   assert.equal(calls.some((call) => call.method !== 'GET'), false);
+});
+
+test('operations consumer is explicitly skipped without cross-repository access', async () => {
+  const result = await finalizeAdoptionPullRequests({
+    event: event(),
+    fetchImpl: async () => {
+      throw new Error('operations skip must not call the API');
+    },
+    manifest: manifest('phuongnse/renovate-ops'),
+    sleep: async () => {},
+    token: 'installation-token-value',
+  });
+
+  assert.deepEqual(result.skipped, ['phuongnse/renovate-ops']);
+  assert.deepEqual(result.ready, []);
+});
+
+test('finalizer rejects a manifest that could expose a sibling token', async () => {
+  const unsafe = manifest('phuongnse/engineering-process');
+  unsafe.consumers.push(manifest('phuongnse/axis').consumers[0]);
+  unsafe.consumers.sort((left, right) => left.repository.localeCompare(right.repository));
+
+  await assert.rejects(
+    finalizeAdoptionPullRequests({
+      event: event(),
+      fetchImpl: async () => {
+        throw new Error('invalid manifest must not call the API');
+      },
+      manifest: unsafe,
+      sleep: async () => {},
+      token: 'installation-token-value',
+    }),
+    /one exact consumer/,
+  );
 });

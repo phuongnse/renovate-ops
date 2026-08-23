@@ -2,56 +2,67 @@
 
 ## Normal operation
 
-The `Renovate` workflow runs in production when the installed GitHub App delivers a bounded `engineering-process-published` repository event and repository variable `RENOVATE_ENABLED` is `true`. The workflow validates the App sender, publisher repository, package, tag/version pair, and attestation digest before creating its separate allowlisted installation token. Manual invocations default to full dry-run and can run before activation; manual production remains an explicit break-glass canary and requires `RENOVATE_ENABLED=true`.
+The `Renovate` workflow runs when the installed GitHub App delivers a bounded
+`engineering-process-published` event and `RENOVATE_ENABLED` is `true`. It validates
+the event, creates a read-only discovery token, and selects the intersection of App
+installation access and explicit `enabled: true` config at immutable consumer
+checkpoints. Manual dispatch defaults to a full dry run.
 
-Review the public operations repository's Actions history and any open issue named `Renovate production run is failing`. Successful recovery closes that incident automatically. Never place credentials or private-repository data in workflow logs or incident comments.
+Each selected repository receives one isolated matrix job and one repository-scoped
+write token. Review the run's per-repository result and any open issue named
+`Renovate production run is failing`. Never place credentials, raw consumer config,
+or private-repository data in public logs or incident comments.
 
-Each production attempt has a separate bounded NDJSON log. The first complete result
-is classified. `lockfile-error` and missing-completion outcomes wait 30 seconds and
-receive exactly one idempotent retry; malformed logs, unexpected or duplicate
-repositories, non-lockfile results, and non-retryable artifact failures stop
-immediately. A second failure opens or updates the incident and never finalizes a
-partial adoption.
+Every production attempt has fresh bounded NDJSON logs. `lockfile-error` and missing
+completion wait 30 seconds and receive exactly one retry; malformed logs, unexpected
+or duplicate repositories, config races, non-lockfile results, and non-retryable
+artifact failures stop immediately. Finalization runs only for the exact consumer
+whose manifest and complete attempt pass.
 
 ## Adoption branch ownership
 
-The `automation/renovate/engineering-process-authority` branch is exclusively
-bot-owned. Do not amend, rebase, or push project cleanup onto it. Use a normal reviewed
-branch for a one-time combined cutover, close any previously edited bot PR, and allow
-the next release event to create a fresh bot-owned branch. Future authority updates
-must remain fully generated so Renovate can update them without an Edited/Blocked
-notification.
+`automation/renovate/engineering-process-authority` is exclusively bot-owned. Do not
+amend, rebase, or push cleanup onto it. Use a normal reviewed branch for a one-time
+combined cutover, close any edited bot PR, and let the next release event create a
+fresh bot-owned branch.
 
-## Add a repository
+## Add a consumer
 
-1. Verify the repository is owned by `phuongnse`, has required branch protection, and contains a reviewed Renovate config.
-2. If it adopts `engineering-process`, verify its post-upgrade command exactly matches the global allowlist and its adoption CI blocks merge on drift.
-3. In the GitHub App installation settings, add selected access to the repository.
-4. Add the exact full name to `repositories.json` through a pull request.
-5. Run `npm run check`, merge, and dispatch a dry-run.
-6. Confirm the log shows the expected config and proposed changes before accepting a release-event production run.
+1. In the consumer, merge a strict Renovate config with explicit `enabled: true`,
+   `automerge: false`, `draftPR: true`, and branch prefix
+   `automation/renovate/`.
+2. For a process consumer, require the exact managed adoption command and adoption CI.
+3. Verify the consumer's own required checks, independent-review pin, and branch protection.
+4. In GitHub App installation settings, grant selected access to the repository.
+5. Dispatch a dry run and verify the reported checkpoint/config digest and proposals.
 
-Removing a repository is the reverse: remove it from `repositories.json` first, merge, then remove App installation access.
+No source change in `renovate-ops` is part of onboarding. To remove a consumer, merge
+`enabled: false` first, confirm discovery no longer selects it, then remove App access.
+For emergency revocation, remove or suspend App access first.
 
 ## Rotate the private key
 
-1. Generate a new private key in the GitHub App settings.
-2. Replace the encrypted `RENOVATE_APP_PRIVATE_KEY` Actions secret in the operations repository.
-3. Dispatch a dry-run and confirm token creation and all repository scans.
-4. Delete the old private key from the GitHub App settings and from every local machine.
+1. Generate a new private key in GitHub App settings.
+2. Replace `RENOVATE_APP_PRIVATE_KEY` in encrypted repository configuration.
+3. Dispatch a dry run and confirm read-only discovery and repository-scoped runs.
+4. Delete the old key from GitHub and every local machine.
 
-Rotate immediately if the key may have been exposed. Do not wait for the dry-run if active compromise is suspected: suspend the installation and disable the workflow first.
+If compromise is suspected, suspend the installation and disable the workflow before diagnosis.
 
 ## Failed production run
 
-1. Open the linked workflow run from the incident issue.
-2. Read the attempt classification and bounded diagnostic; determine whether failure occurred during token minting, container startup, lookup, lock generation, or post-upgrade adoption.
-3. Do not rerun a release event whose built-in retry is still active, and do not broaden permissions or `allowedCommands` to bypass a failure.
-4. For a deterministic failure, fix the correct owner through a reviewed PR and dispatch a dry-run.
-5. Manual production remains break-glass recovery for an event that failed before the retry-capable workflow existed; record the original run and confirm the incident closes after the canary.
+1. Open the linked workflow run and identify the affected consumer matrix job.
+2. Preserve its manifest binding, attempt classification, bounded diagnostic, and exact source.
+3. Do not rerun while built-in recovery is active and do not broaden permissions,
+   commands, App access, or consumer intent to bypass failure.
+4. Fix deterministic defects in their owning repository and run a dry run.
+5. Use manual production only as recorded break-glass recovery.
 
 ## Emergency stop and rollback
 
-Set `RENOVATE_ENABLED=false`, disable the `Renovate` workflow in repository Actions settings, and suspend the custom GitHub App installation. Existing Renovate PRs remain ordinary GitHub branches and can be reviewed or closed independently.
+Set `RENOVATE_ENABLED=false`, disable the workflow, and suspend the custom App
+installation. Per-consumer revocation removes selected App access. Existing Renovate
+PRs remain ordinary branches and can be reviewed or closed independently.
 
-If service must be restored with the Mend-hosted App, ensure the custom workflow is disabled before re-enabling hosted repository access. Never run both production writers concurrently.
+To roll back source, restore the last reviewed operations checkpoint while keeping
+the App suspended. Do not restore a durable central consumer registry as a runtime fallback.

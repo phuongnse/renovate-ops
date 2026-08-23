@@ -1,13 +1,14 @@
 'use strict';
 
-const repositories = process.env.RENOVATE_REPOSITORIES
-  ? process.env.RENOVATE_REPOSITORIES.split(',')
-  : require('./repositories.json');
+const target = process.env.OPS_TARGET_REPOSITORY;
+if (target !== undefined && !/^phuongnse\/[a-z0-9._-]+$/.test(target)) {
+  throw new Error('OPS_TARGET_REPOSITORY must contain one exact trusted repository');
+}
 
 module.exports = {
   platform: 'github',
   endpoint: 'https://api.github.com/',
-  repositories,
+  ...(target === undefined ? {} : { repositories: [target] }),
   autodiscover: false,
   onboarding: false,
   requireConfig: 'required',

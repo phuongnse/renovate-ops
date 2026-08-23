@@ -2,6 +2,10 @@ import { lstat, readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { validateReleaseEvent } from './validate-release-event.mjs';
+import {
+  readConsumerManifest,
+  validateConsumerManifest,
+} from './validate-consumer-manifest.mjs';
 
 const API_ROOT = 'https://api.github.com';
 const ADOPTION_BRANCH = 'automation/renovate/engineering-process-authority';
@@ -15,7 +19,6 @@ const FAILED_CONCLUSIONS = new Set([
   'timed_out',
 ]);
 const MAX_API_BYTES = 1_000_000;
-const MAX_REPOSITORIES = 16;
 const MAX_WAIT_MS = 15 * 60 * 1_000;
 const POLL_INTERVAL_MS = 15_000;
 const READY_EVENT_GRACE_MS = 20_000;
@@ -246,32 +249,32 @@ async function markReady(api, pull) {
 export async function finalizeAdoptionPullRequests({
   event,
   fetchImpl = fetch,
+  manifest,
   now = Date.now,
-  repositories,
   sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   token,
 }) {
   const payload = validateReleaseEvent(event);
-  if (
-    !Array.isArray(repositories)
-    || repositories.length < 2
-    || repositories.length > MAX_REPOSITORIES
-    || repositories.some((repository) => typeof repository !== 'string' || !repositoryPattern(repository))
-    || new Set(repositories).size !== repositories.length
-    || !repositories.includes(event.repository.full_name)
-  ) {
-    throw new Error('repository allowlist is invalid');
+  const consumers = validateConsumerManifest(manifest).consumers;
+  if (consumers.length !== 1 || !repositoryPattern(consumers[0].repository)) {
+    throw new Error('adoption finalization requires one exact consumer');
   }
   if (typeof token !== 'string' || token.length < 20 || token.length > 2_000) {
     throw new Error('GitHub App token is invalid');
   }
+  const repository = consumers[0].repository;
+  if (repository === event.repository.full_name) {
+    return {
+      alreadyAdopted: [],
+      ready: [],
+      skipped: [repository],
+      status: 'passed',
+      version: payload.version,
+    };
+  }
   const api = client(token, fetchImpl);
-  const candidates = await Promise.all(
-    repositories
-      .filter((repository) => repository !== event.repository.full_name)
-      .map((repository) => adoptionPullRequest(api, repository, payload.version)),
-  );
-  const pulls = candidates.filter((candidate) => candidate !== null);
+  const candidate = await adoptionPullRequest(api, repository, payload.version);
+  const pulls = candidate === null ? [] : [candidate];
   const targets = await Promise.all(
     pulls.map(async (pull) => ({
       ...pull,
@@ -285,11 +288,9 @@ export async function finalizeAdoptionPullRequests({
     await waitForChecks(api, targets, { now, sleep });
   }
   return {
-    alreadyAdopted: candidates
-      .map((candidate, index) => (candidate === null ? repositories.filter((repository) => repository !== event.repository.full_name)[index] : null))
-      .filter((repository) => repository !== null)
-      .sort(),
+    alreadyAdopted: candidate === null ? [repository] : [],
     ready: targets.map((target) => `${target.repository}#${target.number}`).sort(),
+    skipped: [],
     status: 'passed',
     version: payload.version,
   };
@@ -316,13 +317,13 @@ async function main() {
     }
     return JSON.parse(content.toString('utf8'));
   };
-  const [event, repositories] = await Promise.all([
+  const [event, manifest] = await Promise.all([
     readBounded(process.argv[2], 'release event'),
-    readBounded(process.argv[3], 'repository allowlist'),
+    readConsumerManifest(process.argv[3]),
   ]);
   const result = await finalizeAdoptionPullRequests({
     event,
-    repositories,
+    manifest,
     token: process.env.GH_TOKEN,
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);

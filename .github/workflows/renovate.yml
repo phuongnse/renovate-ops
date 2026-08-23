@@ -23,21 +23,17 @@ permissions:
   issues: write
 
 jobs:
-  renovate:
-    name: Renovate (${{ github.event_name == 'repository_dispatch' && 'release-event' || inputs.mode }})
+  discover:
+    name: Discover consumer-owned targets
     if: >-
       (github.event_name == 'repository_dispatch' &&
       vars.RENOVATE_ENABLED == 'true') ||
       (github.event_name == 'workflow_dispatch' &&
       (inputs.mode == 'dry-run' || vars.RENOVATE_ENABLED == 'true'))
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
-    env:
-      RENOVATE_ATTEMPT_ONE_LOG: /tmp/renovate-production-attempt-1.ndjson
-      RENOVATE_ATTEMPT_TWO_LOG: /tmp/renovate-production-attempt-2.ndjson
-      RENOVATE_DRY_RUN_LOG: /tmp/renovate-dry-run.ndjson
-      LOG_FILE_FORMAT: json
-      LOG_FILE_LEVEL: info
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.consumers.outputs.matrix }}
     steps:
       - name: Check out operations config
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,9 +44,52 @@ jobs:
         if: github.event_name == 'repository_dispatch'
         run: node scripts/validate-release-event.mjs "$GITHUB_EVENT_PATH"
 
-      - name: Resolve repository allowlist
-        id: allowlist
-        run: node scripts/export-repositories.mjs >> "$GITHUB_OUTPUT"
+      - name: Create read-only installation discovery token
+        id: discovery-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          owner: phuongnse
+          permission-contents: read
+          permission-metadata: read
+
+      - name: Discover explicit immutable consumer intent
+        id: consumers
+        env:
+          GH_TOKEN: ${{ steps.discovery-token.outputs.token }}
+        run: >-
+          node scripts/discover-consumers.mjs
+          "$RUNNER_TEMP/consumer-manifest.json"
+
+  renovate:
+    name: Renovate (${{ matrix.repository }})
+    needs: discover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    env:
+      RENOVATE_ATTEMPT_ONE_LOG: /tmp/renovate-production-attempt-1.ndjson
+      RENOVATE_ATTEMPT_TWO_LOG: /tmp/renovate-production-attempt-2.ndjson
+      RENOVATE_DRY_RUN_LOG: /tmp/renovate-dry-run.ndjson
+      RENOVATE_CONSUMER_MANIFEST: /tmp/renovate-consumer-manifest.json
+      LOG_FILE_FORMAT: json
+      LOG_FILE_LEVEL: info
+    steps:
+      - name: Check out operations config
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Materialize the exact consumer manifest
+        env:
+          RENOVATE_CONSUMER_JSON: ${{ toJSON(matrix) }}
+        run: >-
+          node scripts/validate-consumer-manifest.mjs
+          --from-env "$RENOVATE_CONSUMER_MANIFEST"
 
       - name: Require fresh bounded outcome logs
         run: |
@@ -58,14 +97,14 @@ jobs:
           test ! -e "$RENOVATE_ATTEMPT_ONE_LOG"
           test ! -e "$RENOVATE_ATTEMPT_TWO_LOG"
 
-      - name: Create short-lived GitHub App token
+      - name: Create one repository-scoped GitHub App token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
           owner: phuongnse
-          repositories: ${{ steps.allowlist.outputs.repositories }}
+          repositories: ${{ matrix.repository }}
           permission-administration: read
           permission-checks: write
           permission-contents: write
@@ -77,6 +116,12 @@ jobs:
           permission-vulnerability-alerts: read
           permission-workflows: write
 
+      - name: Revalidate consumer intent before execution
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RENOVATE_CONSUMER_JSON: ${{ toJSON(matrix) }}
+        run: node scripts/discover-consumers.mjs --revalidate
+
       - name: Renovate dry-run
         if: github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run'
         uses: renovatebot/github-action@e09d604f8f803bb527bd8321ed5be06c460b8682 # v46.2.2
@@ -84,13 +129,13 @@ jobs:
           configurationFile: config.cjs
           token: ${{ steps.app-token.outputs.token }}
           renovate-version: 44.37.1@sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
-          env-regex: '^(?:RENOVATE_\w+|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
+          env-regex: '^(?:RENOVATE_\w+|OPS_TARGET_REPOSITORY|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
         env:
           LOG_FILE: ${{ env.RENOVATE_DRY_RUN_LOG }}
           LOG_FORMAT: json
           LOG_LEVEL: info
           RENOVATE_DRY_RUN: full
-          RENOVATE_REPOSITORIES: ${{ steps.allowlist.outputs.renovate_repositories }}
+          OPS_TARGET_REPOSITORY: ${{ matrix.repository }}
 
       - name: Renovate production attempt 1
         if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'production')
@@ -99,17 +144,19 @@ jobs:
           configurationFile: config.cjs
           token: ${{ steps.app-token.outputs.token }}
           renovate-version: 44.37.1@sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
-          env-regex: '^(?:RENOVATE_\w+|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
+          env-regex: '^(?:RENOVATE_\w+|OPS_TARGET_REPOSITORY|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
         env:
           LOG_FILE: ${{ env.RENOVATE_ATTEMPT_ONE_LOG }}
           LOG_FORMAT: json
           LOG_LEVEL: info
-          RENOVATE_REPOSITORIES: ${{ steps.allowlist.outputs.renovate_repositories }}
+          OPS_TARGET_REPOSITORY: ${{ matrix.repository }}
 
       - name: Classify production attempt 1
         id: production_attempt_one
         if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'production')
-        run: node scripts/classify-renovate-log.mjs "$RENOVATE_ATTEMPT_ONE_LOG" repositories.json
+        run: >-
+          node scripts/classify-renovate-log.mjs
+          "$RENOVATE_ATTEMPT_ONE_LOG" "$RENOVATE_CONSUMER_MANIFEST"
 
       - name: Wait before the single bounded recovery attempt
         if: steps.production_attempt_one.outputs.status == 'retryable'
@@ -122,20 +169,28 @@ jobs:
           configurationFile: config.cjs
           token: ${{ steps.app-token.outputs.token }}
           renovate-version: 44.37.1@sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
-          env-regex: '^(?:RENOVATE_\w+|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
+          env-regex: '^(?:RENOVATE_\w+|OPS_TARGET_REPOSITORY|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
         env:
           LOG_FILE: ${{ env.RENOVATE_ATTEMPT_TWO_LOG }}
           LOG_FILE_LEVEL: debug
           LOG_FORMAT: json
           LOG_LEVEL: info
-          RENOVATE_REPOSITORIES: ${{ steps.allowlist.outputs.renovate_repositories }}
+          OPS_TARGET_REPOSITORY: ${{ matrix.repository }}
 
       - name: Validate production attempt 2
         id: production_attempt_two
         if: steps.production_attempt_one.outputs.status == 'retryable'
-        run: node scripts/validate-renovate-log.mjs "$RENOVATE_ATTEMPT_TWO_LOG" repositories.json
+        run: >-
+          node scripts/validate-renovate-log.mjs
+          "$RENOVATE_ATTEMPT_TWO_LOG" "$RENOVATE_CONSUMER_MANIFEST"
 
-      - name: Finalize verified process adoption pull requests
+      - name: Revalidate consumer intent after execution
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RENOVATE_CONSUMER_JSON: ${{ toJSON(matrix) }}
+        run: node scripts/discover-consumers.mjs --revalidate
+
+      - name: Finalize verified process adoption pull request
         if: >-
           github.event_name == 'repository_dispatch' &&
           (steps.production_attempt_one.outputs.status == 'passed' ||
@@ -144,11 +199,21 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: >-
           node scripts/finalize-adoption-prs.mjs
-          "$GITHUB_EVENT_PATH"
-          repositories.json
+          "$GITHUB_EVENT_PATH" "$RENOVATE_CONSUMER_MANIFEST"
 
+  operations-incident:
+    name: Reconcile operations incident
+    needs: [discover, renovate]
+    if: >-
+      always() &&
+      ((github.event_name == 'repository_dispatch' && vars.RENOVATE_ENABLED == 'true') ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'production' &&
+      vars.RENOVATE_ENABLED == 'true'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
       - name: Open or update an operations incident
-        if: failure() && (github.event_name == 'repository_dispatch' || inputs.mode == 'production')
+        if: needs.discover.result != 'success' || needs.renovate.result != 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -163,7 +228,7 @@ jobs:
           fi
 
       - name: Resolve the operations incident after recovery
-        if: success() && (github.event_name == 'repository_dispatch' || inputs.mode == 'production')
+        if: needs.discover.result == 'success' && needs.renovate.result == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

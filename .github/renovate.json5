@@ -4,6 +4,7 @@
     "config:recommended",
     "helpers:pinGitHubActionDigests"
   ],
+  "enabled": true,
   "configMigration": true,
   "automerge": false,
   "branchPrefix": "automation/renovate/",

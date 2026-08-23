@@ -2,9 +2,6 @@ import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
-const allowlistedRepositories = JSON.parse(
-  await readFile(new URL('../repositories.json', import.meta.url), 'utf8'),
-);
 const exactAdoptionCommand =
   'python .process/adopt-process.py --project-root . --requirements-lock requirements/process.txt';
 const maximumChangedFiles = 1_000;
@@ -218,8 +215,8 @@ async function main() {
   const repository = process.env.GITHUB_REPOSITORY;
   const pullRequest = event.pull_request;
   if (!pullRequest) throw new Error('independent review requires a pull_request event');
-  if (repository !== event.repository?.full_name || !allowlistedRepositories.includes(repository)) {
-    throw new Error(`repository is outside the reviewed allowlist: ${repository}`);
+  if (repository !== event.repository?.full_name) {
+    throw new Error(`review event repository does not match the caller: ${repository}`);
   }
   if (pullRequest.base.ref !== 'main') throw new Error('pull request must target main');
   const baseSha = pullRequest.base.sha;

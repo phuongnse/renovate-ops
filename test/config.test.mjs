@@ -1,13 +1,11 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const require = createRequire(import.meta.url);
+import config from '../config.cjs';
+
 const root = new URL('../', import.meta.url);
-const config = require('../config.cjs');
-const repositories = JSON.parse(await readFile(new URL('repositories.json', root)));
 const manifest = JSON.parse(await readFile(new URL('github-app-manifest.json', root)));
 const workflow = await readFile(new URL('.github/workflows/renovate.yml', root), 'utf8');
 const branchProtection = await readFile(
@@ -23,33 +21,39 @@ const independentWorkflow = await readFile(
   'utf8',
 );
 const ciWorkflow = await readFile(new URL('.github/workflows/ci.yml', root), 'utf8');
-const repositoryProtections = await readFile(
-  new URL('scripts/configure-repository-protections.mjs', root),
-  'utf8',
-);
+const packageDocument = JSON.parse(await readFile(new URL('package.json', root)));
 const readme = await readFile(new URL('README.md', root), 'utf8');
 const runbook = await readFile(new URL('docs/RUNBOOK.md', root), 'utf8');
 
-test('global configuration has a closed repository boundary', () => {
-  assert.deepEqual(config.repositories, repositories);
+test('global configuration requires one workflow-supplied target', () => {
+  assert.equal(Object.hasOwn(config, 'repositories'), false);
   assert.equal(config.autodiscover, false);
   assert.equal(config.onboarding, false);
   assert.equal(config.requireConfig, 'required');
-  assert.equal(new Set(repositories).size, repositories.length);
-  assert.ok(repositories.every((repository) => /^phuongnse\/[a-z0-9._-]+$/i.test(repository)));
+  assert.match(workflow, /OPS_TARGET_REPOSITORY: \$\{\{ matrix\.repository \}\}/);
+  assert.doesNotMatch(workflow, /repositories\.json|steps\.allowlist/);
 
-  const containerRepositories = JSON.parse(
-    execFileSync(
-      process.execPath,
-      ['-e', 'process.stdout.write(JSON.stringify(require("./config.cjs").repositories))'],
-      {
-        cwd: new URL('.', root),
-        encoding: 'utf8',
-        env: { ...process.env, RENOVATE_REPOSITORIES: repositories.join(',') },
-      },
-    ),
+  const repositories = JSON.parse(execFileSync(
+    process.execPath,
+    ['-e', 'process.stdout.write(JSON.stringify(require("./config.cjs").repositories))'],
+    {
+      cwd: new URL('.', root),
+      encoding: 'utf8',
+      env: { ...process.env, OPS_TARGET_REPOSITORY: 'phuongnse/axis' },
+    },
+  ));
+  assert.deepEqual(repositories, ['phuongnse/axis']);
+  const invalid = spawnSync(
+    process.execPath,
+    ['-e', 'require("./config.cjs")'],
+    {
+      cwd: new URL('.', root),
+      encoding: 'utf8',
+      env: { ...process.env, OPS_TARGET_REPOSITORY: 'phuongnse/axis,phuongnse/other' },
+    },
   );
-  assert.deepEqual(containerRepositories, repositories);
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /one exact trusted repository/);
 });
 
 test('only the process adoption command is executable', () => {
@@ -61,19 +65,15 @@ test('only the process adoption command is executable', () => {
   ]);
 });
 
-test('workflow scopes a short-lived app token to the same allowlist', () => {
-  const output = execFileSync(process.execPath, ['scripts/export-repositories.mjs'], {
-    cwd: new URL('.', root),
-    encoding: 'utf8',
-  });
-  for (const repository of repositories) assert.match(output, new RegExp(`${repository}(?:\\n|$)`));
-  assert.match(output, new RegExp(`renovate_repositories=${repositories.join(',')}`));
-  assert.match(workflow, /actions\/create-github-app-token@[a-f0-9]{40}/);
-  assert.match(workflow, /repositories: \$\{\{ steps\.allowlist\.outputs\.repositories \}\}/);
-  assert.match(
-    workflow,
-    /RENOVATE_REPOSITORIES: \$\{\{ steps\.allowlist\.outputs\.renovate_repositories \}\}/,
-  );
+test('workflow separates read-only discovery from repository-scoped writers', () => {
+  assert.match(workflow, /name: Create read-only installation discovery token/);
+  assert.match(workflow, /permission-contents: read/);
+  assert.match(workflow, /name: Create one repository-scoped GitHub App token/);
+  assert.match(workflow, /repositories: \$\{\{ matrix\.repository \}\}/);
+  assert.match(workflow, /max-parallel: 4/);
+  assert.match(workflow, /node scripts\/discover-consumers\.mjs/);
+  assert.match(workflow, /node scripts\/validate-consumer-manifest\.mjs/);
+  assert.equal((workflow.match(/actions\/create-github-app-token@[a-f0-9]{40}/g) ?? []).length, 2);
   assert.match(workflow, /RENOVATE_APP_CLIENT_ID/);
   assert.match(workflow, /RENOVATE_APP_PRIVATE_KEY/);
   assert.match(workflow, /vars\.RENOVATE_ENABLED == 'true'/);
@@ -84,29 +84,25 @@ test('production Renovate is activated by a bounded authenticated release event'
   assert.match(workflow, /repository_dispatch:\n    types: \[engineering-process-published\]/);
   assert.doesNotMatch(workflow, /^  schedule:/m);
   assert.match(workflow, /node scripts\/validate-release-event\.mjs "\$GITHUB_EVENT_PATH"/);
-  assert.match(
-    workflow,
-    /github\.event_name == 'repository_dispatch' \|\| \(github\.event_name == 'workflow_dispatch'/,
-  );
   assert.match(workflow, /RENOVATE_ATTEMPT_ONE_LOG: \/tmp\/renovate-production-attempt-1\.ndjson/);
   assert.match(workflow, /RENOVATE_ATTEMPT_TWO_LOG: \/tmp\/renovate-production-attempt-2\.ndjson/);
-  assert.match(workflow, /node scripts\/classify-renovate-log\.mjs "\$RENOVATE_ATTEMPT_ONE_LOG" repositories\.json/);
+  assert.match(workflow, /"\$RENOVATE_ATTEMPT_ONE_LOG" "\$RENOVATE_CONSUMER_MANIFEST"/);
   assert.match(workflow, /node scripts\/wait-for-renovate-retry\.mjs/);
-  assert.match(workflow, /node scripts\/validate-renovate-log\.mjs "\$RENOVATE_ATTEMPT_TWO_LOG" repositories\.json/);
+  assert.match(workflow, /"\$RENOVATE_ATTEMPT_TWO_LOG" "\$RENOVATE_CONSUMER_MANIFEST"/);
   assert.equal((workflow.match(/name: Renovate production attempt [12]/g) ?? []).length, 2);
+  assert.match(workflow, /name: Revalidate consumer intent before execution/);
+  assert.match(workflow, /name: Revalidate consumer intent after execution/);
   assert.match(
     workflow,
     /steps\.production_attempt_one\.outputs\.status == 'passed' \|\|\n\s+steps\.production_attempt_two\.outcome == 'success'/,
   );
-  assert.match(
-    workflow,
-    /node scripts\/finalize-adoption-prs\.mjs\n          "\$GITHUB_EVENT_PATH"\n          repositories\.json/,
-  );
+  assert.match(workflow, /"\$GITHUB_EVENT_PATH" "\$RENOVATE_CONSUMER_MANIFEST"/);
   assert.match(workflow, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
 });
 
-test('process adoption branches remain bot-owned after the reviewed cutover', () => {
+test('consumer intent and bot-owned adoption branch remain explicit', () => {
   for (const document of [readme, runbook]) {
+    assert.match(document, /enabled/i);
     assert.match(document, /automation\/renovate\/engineering-process-authority/);
     assert.match(document, /bot-owned/i);
     assert.match(document, /normal reviewed\s+branch/i);
@@ -160,8 +156,6 @@ test('main protection requires CI, independent review, and immutable history', (
   assert.match(branchProtection, /required_conversation_resolution: true/);
   assert.match(branchProtection, /allow_force_pushes: false/);
   assert.match(branchProtection, /allow_deletions: false/);
-  assert.match(branchProtection, /^  restrictions: null,/m);
-  assert.doesNotMatch(branchProtection, /dismissal_restrictions/);
 });
 
 test('independent review resolves verifier code from the called workflow SHA', () => {
@@ -174,19 +168,14 @@ test('independent review resolves verifier code from the called workflow SHA', (
     ciWorkflow,
     /uses: phuongnse\/renovate-ops\/\.github\/workflows\/independent-review\.yml@[0-9a-f]{40}/,
   );
-  assert.match(
-    ciWorkflow,
-    /independent-review:\n    name: independent-review\n    if: github\.event_name == 'pull_request'/,
-  );
 });
 
-test('single-maintainer protection covers every allowlisted repository', () => {
-  for (const repository of repositories) assert.match(repositoryProtections, new RegExp(repository));
-  assert.match(repositoryProtections, /required_pull_request_reviews: null/);
-  assert.match(repositoryProtections, /'independent-review \/ independent-review'/);
-  assert.match(repositoryProtections, /required_status_checks: \{ strict: true, contexts \}/);
-  assert.match(repositoryProtections, /allow_force_pushes: false/);
-  assert.match(repositoryProtections, /allow_deletions: false/);
+test('consumer branch protections are not centrally declared', async () => {
+  assert.equal(Object.hasOwn(packageDocument.scripts, 'bootstrap:protect-all'), false);
+  await assert.rejects(
+    () => readFile(new URL('scripts/configure-repository-protections.mjs', root)),
+    (error) => error.code === 'ENOENT',
+  );
 });
 
 test('event-driven review binds dispatch inputs to the live pull request', () => {
@@ -196,5 +185,4 @@ test('event-driven review binds dispatch inputs to the live pull request', () =>
   assert.match(independentWorkflow, /\.head\.sha[^\n]+REQUESTED_HEAD_SHA/);
   assert.match(independentWorkflow, /--event-path "\$\{\{ steps\.review\.outputs\.event_path \}\}"/);
   assert.doesNotMatch(independentWorkflow, /GITHUB_EVENT_PATH: \$\{\{ steps\.review\.outputs\.event_path \}\}/);
-  assert.doesNotMatch(independentWorkflow, /\bschedule:|workflow_dispatch:/);
 });

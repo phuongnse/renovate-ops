@@ -24,6 +24,7 @@ async function fixture() {
     path.join(root, '.github', 'renovate.json5'),
     `${JSON.stringify(
       {
+        enabled: true,
         automerge: false,
         branchPrefix: 'automation/renovate/',
         draftPR: true,
@@ -53,7 +54,7 @@ async function eventFile(root, baseSha, headSha) {
   await writeFile(
     eventPath,
     `${JSON.stringify({
-      repository: { full_name: 'phuongnse/axis-reference-product' },
+      repository: { full_name: 'phuongnse/new-process-consumer' },
       pull_request: {
         number: 7,
         base: { ref: 'main', sha: baseSha },
@@ -81,7 +82,7 @@ function runVerifier(root, eventPath, outputPath) {
       env: {
         ...process.env,
         GITHUB_EVENT_PATH: path.join(root, 'ignored-default-event.json'),
-        GITHUB_REPOSITORY: 'phuongnse/axis-reference-product',
+        GITHUB_REPOSITORY: 'phuongnse/new-process-consumer',
         TRUSTED_WORKFLOW_REPOSITORY: 'phuongnse/renovate-ops',
         TRUSTED_WORKFLOW_SHA: 'a'.repeat(40),
       },
@@ -101,7 +102,7 @@ test('independent verifier uses the explicit immutable event path', async () => 
   assert.equal(report.status, 'passed');
   assert.equal(report.governanceMode, 'single-maintainer');
   assert.equal(report.verificationKind, 'independent-automated');
-  assert.equal(report.repository, 'phuongnse/axis-reference-product');
+  assert.equal(report.repository, 'phuongnse/new-process-consumer');
   assert.equal(report.baseSha, baseSha);
   assert.equal(report.headSha, headSha);
   assert.deepEqual(report.changedFileCount, 1);
@@ -122,4 +123,17 @@ test('independent verifier rejects a mutable action reference', async () => {
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /workflow action is not immutably pinned/);
+});
+
+test('independent verifier rejects an event for a different caller repository', async () => {
+  const { root, baseSha, headSha } = await fixture();
+  const eventPath = await eventFile(root, baseSha, headSha);
+  const event = JSON.parse(await readFile(eventPath, 'utf8'));
+  event.repository.full_name = 'phuongnse/different-consumer';
+  await writeFile(eventPath, `${JSON.stringify(event)}\n`);
+
+  const result = runVerifier(root, eventPath, path.join(root, 'report.json'));
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /event repository does not match the caller/);
 });
