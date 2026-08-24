@@ -11,7 +11,8 @@
 - The private key enters only the pinned token-minting action. Renovate receives an installation token, not the private key.
 - The installation token is limited to `repositories.json`, expires within one hour, and is revoked at job cleanup.
 - GitHub-hosted runners are ephemeral. The Renovate container receives no Docker socket.
-- Repository default branches are trusted inputs. A merged change to a managed adoption script can change what the exact allowed command does, so branch protection and independent review remain required controls.
+- Repository default branches are trusted inputs. Branch protection, pinned policy
+  verification, and pre-PR semantic lifecycle review remain required controls.
 - Dependency metadata and package artifacts are untrusted external inputs. Consumer CI validates generated locks and adoption output before merge.
 
 ## Enforced controls
@@ -22,11 +23,14 @@
 - No personal access token, arbitrary shell executor, arbitrary post-upgrade command, plugin loading, lifecycle scripts, or Docker socket.
 - Authenticated release-event and explicit canary runs serialize and time out before the one-hour installation-token lifetime.
 - Production failures open or update an issue in the public operations repository; recovery closes it. Incident content contains no credential or private-repository data.
-- Renovate and process-adoption PRs are draft and never automerged.
+- Renovate dependency PRs never automerge. Process-adoption PRs are outside Renovate
+  and are published only from completed lifecycle checkpoints.
 
 ## Residual risks
 
-- A malicious reviewed-and-merged adoption script can access the installation token during its run. Required review and branch protection are part of the security boundary.
+- A malicious dependency update can still target workflow or package inputs. Static
+  policy verification, semantic lifecycle review, and branch protection are part of
+  the security boundary; process-adoption scripts never receive the Renovate token.
 - A compromised third-party package registry can propose malicious artifacts. Hash locks, provenance checks, consumer CI, and human review must reject them before merge.
 - GitHub Actions and GitHub App infrastructure are external trusted services.
 - Operations source, workflow logs, and incident issues are public. Managed repositories must remain public unless logging and incident disclosure controls are redesigned first.

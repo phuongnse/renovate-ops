@@ -7,7 +7,9 @@ This repository is the privileged control plane for dependency automation.
 - Pin the Renovate container by OCI digest and retain its version annotation.
 - Never add a personal access token, Docker socket mount, shell executor, discovery wildcard, or unreviewed command pattern.
 - Treat GitHub App permission changes and `allowedCommands` changes as security-sensitive.
-- Treat the reusable independent-review workflow and verifier as the cross-repository trust root. Consumers must pin it by full commit SHA.
+- Treat the reusable policy-verification workflow and verifier as a supplemental
+  cross-repository trust root. Consumers must pin it by full commit SHA. It never
+  substitutes for the process lifecycle's host-selected semantic review.
 - Run `npm run check` before publishing a change.
 - Keep production automerge disabled. Consumer adoption remains authorized by merging its reviewed PR.
 

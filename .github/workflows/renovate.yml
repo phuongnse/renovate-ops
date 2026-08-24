@@ -135,18 +135,6 @@ jobs:
         if: steps.production_attempt_one.outputs.status == 'retryable'
         run: node scripts/validate-renovate-log.mjs "$RENOVATE_ATTEMPT_TWO_LOG" repositories.json
 
-      - name: Finalize verified process adoption pull requests
-        if: >-
-          github.event_name == 'repository_dispatch' &&
-          (steps.production_attempt_one.outputs.status == 'passed' ||
-          steps.production_attempt_two.outcome == 'success')
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: >-
-          node scripts/finalize-adoption-prs.mjs
-          "$GITHUB_EVENT_PATH"
-          repositories.json
-
       - name: Open or update an operations incident
         if: failure() && (github.event_name == 'repository_dispatch' || inputs.mode == 'production')
         env:
