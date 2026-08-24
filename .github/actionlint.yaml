@@ -4,3 +4,8 @@ paths:
       # GitHub.com supports these reusable-workflow identity properties. Remove
       # this narrow compatibility rule once actionlint's context schema catches up.
       - 'property "workflow_(repository|sha)" is not defined in object type'
+  .github/workflows/policy-verification.yml:
+    ignore:
+      # The introduced workflow uses the same GitHub.com reusable-workflow identity
+      # contexts; self-CI continues to call the old workflow until Stage B.
+      - 'property "workflow_(repository|sha)" is not defined in object type'
