@@ -230,8 +230,9 @@ test('policy verification resolves verifier code from the exact Stage A main SHA
   );
   assert.match(
     ciWorkflow,
-    /policy-verification:\n    name: policy-verification\n    if: github\.event_name == 'pull_request'/,
+    /policy-verification:\n    name: policy-verification\n    if: github\.event_name == 'pull_request'\n    permissions:\n      contents: read\n      pull-requests: read\n    uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@a8bd528634b299dda428863f41784ad4f962afd7/,
   );
+  assert.doesNotMatch(ciWorkflow, /pull-requests: write/);
   assert.doesNotMatch(ciWorkflow, /independent-review/);
 });
 
