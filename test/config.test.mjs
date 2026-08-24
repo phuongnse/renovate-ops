@@ -106,13 +106,13 @@ test('production Renovate is activated by a bounded authenticated release event'
   assert.match(workflow, /node scripts\/validate-renovate-log\.mjs "\$RENOVATE_ATTEMPT_TWO_LOG" repositories\.json/);
   assert.equal((workflow.match(/name: Renovate production attempt [12]/g) ?? []).length, 2);
   assert.doesNotMatch(workflow, /finalize-adoption-prs|markPullRequestReadyForReview/);
-  assert.match(workflow, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
+  assert.match(workflow, /token: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
 });
 
 test('process adoption publication belongs to the lifecycle host', () => {
   for (const document of [readme, runbook]) {
-    assert.match(document, /lifecycle host/i);
-    assert.match(document, /before (?:source|PR) publication/i);
+    assert.match(document, /lifecycle\s+host/i);
+    assert.match(document, /before source\s+or PR\s+publication/i);
     assert.doesNotMatch(document, /bot-owned/i);
   }
 });

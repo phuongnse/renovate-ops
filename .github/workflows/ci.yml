@@ -9,12 +9,12 @@ permissions:
   contents: read
 
 jobs:
-  independent-review:
-    name: independent-review
+  policy-verification:
+    name: policy-verification
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
-    uses: phuongnse/renovate-ops/.github/workflows/independent-review.yml@48a644b081ea9d098796432750f892e2e3f44614
+    uses: phuongnse/renovate-ops/.github/workflows/policy-verification.yml@817bf28e0e534bc1b07c0b5f703038475583c77c
 
   validate:
     runs-on: ubuntu-24.04
