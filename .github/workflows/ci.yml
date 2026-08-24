@@ -14,7 +14,7 @@ jobs:
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
-    uses: phuongnse/renovate-ops/.github/workflows/policy-verification.yml@817bf28e0e534bc1b07c0b5f703038475583c77c
+    uses: phuongnse/renovate-ops/.github/workflows/policy-verification.yml@ac8ad2a0893bf820e5ffd5aa6d19bda7bc5667d3
 
   validate:
     runs-on: ubuntu-24.04
