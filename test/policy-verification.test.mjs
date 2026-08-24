@@ -163,6 +163,20 @@ test('policy verifier rejects PR-first process adoption configuration', async (c
       },
       expected: /postUpgradeTasks must be absent/,
     },
+    {
+      name: 'missing authority rule for a process consumer',
+      mutate: (config) => {
+        config.packageRules = [{ automerge: false }];
+      },
+      prepare: async (root) => {
+        await mkdir(path.join(root, 'requirements'), { recursive: true });
+        await writeFile(
+          path.join(root, 'requirements', 'process.in'),
+          'engineering-process==0.4.0\n',
+        );
+      },
+      expected: /authority rule must be disabled/,
+    },
   ];
   for (const item of cases) {
     await context.test(item.name, async () => {
@@ -171,7 +185,9 @@ test('policy verifier rejects PR-first process adoption configuration', async (c
       const config = JSON.parse(await readFile(configPath, 'utf8'));
       item.mutate(config);
       await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+      if (item.prepare) await item.prepare(root);
       git(root, 'add', '--', '.github/renovate.json5');
+      if (item.prepare) git(root, 'add', '--', 'requirements/process.in');
       git(root, 'commit', '-qm', 'test: mutate process policy');
       const headSha = git(root, 'rev-parse', 'HEAD');
       const eventPath = await eventFile(root, baseSha, headSha);

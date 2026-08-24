@@ -164,8 +164,15 @@ async function assertRenovateContract(root) {
   const processRules = (config.packageRules ?? []).filter((rule) =>
     rule?.matchPackageNames?.includes('engineering-process')
   );
+  let hasProcessPin = false;
+  try {
+    await readFile(path.join(root, 'requirements/process.in'), 'utf8');
+    hasProcessPin = true;
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   if (
-    processRules.length > 0 &&
+    (hasProcessPin || processRules.length > 0) &&
     (processRules.length !== 1 || processRules[0].enabled !== false)
   ) {
     throw new Error(`${loaded.path}: engineering-process authority rule must be disabled`);
