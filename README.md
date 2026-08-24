@@ -24,7 +24,9 @@ adoption command outside Renovate under the consumer's process contract.
 
 ## Bootstrap
 
-1. Run `npm ci --ignore-scripts && npm run check`.
+1. Run `npm ci --ignore-scripts`, then
+   `processctl setup --project-root . --profile review --apply --allow project-files`,
+   then `npm run check`.
 2. Create the public repository and push this reviewed source.
 3. Run `npm run bootstrap:protect`. Required CI, immutable policy verification, code ownership, and immutable history are production preconditions. Semantic checkpoint review remains a separate pre-PR engineering-process gate.
 4. Run `node scripts/github-app-manifest-server.mjs` and open the printed localhost URL.
@@ -49,8 +51,16 @@ Both Renovate's target list and the installation token's repository scope are de
 
 ```bash
 npm ci --ignore-scripts
+processctl setup --project-root . --profile review --apply --allow project-files
 npm run check
 ```
+
+The committed npm `allowScripts` policy permits only exact `re2@1.26.1` and
+explicitly denies `core-js-pure` and `dtrace-provider`. Setup rebuilds only `re2`.
+The environment probe then binds the lock's complete install-script inventory, the
+regular `node_modules/re2/build/Release/re2.node` file, exact package version, and a
+working native import before either unchanged Renovate validator runs. Do not set
+`RENOVATE_X_IGNORE_RE2`, suppress validator output, or replace the canonical commands.
 
 Operational procedures are in `docs/RUNBOOK.md`. Security assumptions are in `docs/THREAT_MODEL.md`.
 The single-maintainer authorization, semantic-review boundary, and policy-verification contract are in `docs/GOVERNANCE.md`.

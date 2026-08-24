@@ -45,6 +45,14 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
 
+      - name: Prepare exact Renovate validation runtime
+        run: >-
+          processctl setup
+          --project-root .
+          --profile review
+          --apply
+          --allow project-files
+
       - name: Validate complete process adoption candidate
         if: >-
           github.event_name == 'pull_request' &&

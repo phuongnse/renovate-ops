@@ -40,6 +40,13 @@ Changes to the verifier are checked by the previously pinned verifier revision a
 semantically reviewed through the normal pre-PR lifecycle. This creates a forward
 static trust chain without allowing the policy verifier to approve itself.
 
+Repository CI prepares validator dependencies under a separate locked boundary:
+`npm ci --ignore-scripts` materializes packages, the exact `allowScripts` policy
+permits only `re2@1.26.1`, process setup rebuilds only that package, and a read-only
+probe proves the regular native module and working import. Missing native RE2 or any
+unreviewed install-script entry blocks validation; output suppression and the
+inaccurate RegExp fallback are not accepted evidence.
+
 ## Branch policy
 
 Steady-state default-branch protection requires:

@@ -11,6 +11,9 @@ const renovateConfig = JSON.parse(
   await readFile(new URL('.github/renovate.json5', root)),
 );
 const repositories = JSON.parse(await readFile(new URL('repositories.json', root)));
+const packageDocument = JSON.parse(await readFile(new URL('package.json', root)));
+const processManifest = JSON.parse(await readFile(new URL('.process/project.json', root)));
+const npmConfig = await readFile(new URL('.npmrc', root), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('github-app-manifest.json', root)));
 const workflow = await readFile(new URL('.github/workflows/renovate.yml', root), 'utf8');
 const branchProtection = await readFile(
@@ -32,6 +35,37 @@ const repositoryProtections = await readFile(
 );
 const readme = await readFile(new URL('README.md', root), 'utf8');
 const runbook = await readFile(new URL('docs/RUNBOOK.md', root), 'utf8');
+const validationRuntime = await readFile(
+  new URL('scripts/verify-validation-runtime.mjs', root),
+  'utf8',
+);
+
+test('validation dependency scripts are exact, denied by default, and setup-owned', () => {
+  assert.deepEqual(packageDocument.allowScripts, {
+    'core-js-pure': false,
+    'dtrace-provider': false,
+    're2@1.26.1': true,
+  });
+  assert.equal(npmConfig, 'strict-allow-scripts=true\n');
+  const requirement = processManifest.environment.requirements.find(
+    ({ id }) => id === 'validation-runtime',
+  );
+  assert.ok(requirement);
+  assert.deepEqual(requirement.probe.run, ['node', 'scripts/verify-validation-runtime.mjs']);
+  assert.equal(requirement.setupAction, 'prepare-validation-runtime');
+  const action = processManifest.environment.setupActions.find(
+    ({ id }) => id === 'prepare-validation-runtime',
+  );
+  assert.deepEqual(action.run, ['npm', 'rebuild', 're2']);
+  assert.deepEqual(action.mutations, ['project-files']);
+  assert.match(validationRuntime, /node_modules\/re2\/build\/Release\/re2\.node/);
+  assert.doesNotMatch(validationRuntime, /RENOVATE_X_IGNORE_RE2/);
+
+  const install = ciWorkflow.indexOf('run: npm ci --ignore-scripts');
+  const setup = ciWorkflow.indexOf('processctl setup');
+  const profiles = ciWorkflow.indexOf('processctl verify --project-root . --profile development');
+  assert.ok(install >= 0 && install < setup && setup < profiles);
+});
 
 test('global configuration has a closed repository boundary', () => {
   assert.deepEqual(config.repositories, repositories);

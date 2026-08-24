@@ -6,6 +6,14 @@ The `Renovate` workflow runs in production when the installed GitHub App deliver
 
 Review the public operations repository's Actions history and any open issue named `Renovate production run is failing`. Successful recovery closes that incident automatically. Never place credentials or private-repository data in workflow logs or incident comments.
 
+Before local validation or CI profile execution, run `npm ci --ignore-scripts` and
+then `processctl setup --project-root . --profile review --apply --allow
+project-files`. The setup action rebuilds only exact policy-approved `re2`; the
+environment probe must report `Renovate validation runtime ready`. Treat a missing
+`re2.node`, install-script inventory drift, runtime import failure, or any Renovate
+RE2 fallback diagnostic as deterministic failure. Never use
+`RENOVATE_X_IGNORE_RE2`, broaden script approval, or substitute another validator.
+
 Each production attempt has a separate bounded NDJSON log. The first complete result
 is classified. `lockfile-error` and missing-completion outcomes wait 30 seconds and
 receive exactly one idempotent retry; malformed logs, unexpected or duplicate

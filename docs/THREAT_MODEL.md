@@ -20,7 +20,12 @@
 - No autodiscovery; an exact, version-controlled allowlist is mandatory.
 - No onboarding of repositories without a committed Renovate configuration.
 - Third-party actions use immutable commit SHAs; the Renovate image uses a multi-platform OCI digest.
-- No personal access token, arbitrary shell executor, arbitrary post-upgrade command, plugin loading, lifecycle scripts, or Docker socket.
+- No personal access token, arbitrary shell executor, arbitrary post-upgrade command,
+  plugin loading, Renovate-executed lifecycle scripts, or Docker socket.
+- Dependency lifecycle scripts are disabled during lock materialization. Project
+  policy approves only exact `re2@1.26.1`, explicitly denies unrelated pending
+  scripts, and setup verifies the contained regular native module and runtime import
+  before validation.
 - Authenticated release-event and explicit canary runs serialize and time out before the one-hour installation-token lifetime.
 - Production failures open or update an issue in the public operations repository; recovery closes it. Incident content contains no credential or private-repository data.
 - Renovate dependency PRs never automerge. Process-adoption PRs are outside Renovate

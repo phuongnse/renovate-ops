@@ -12,6 +12,9 @@ This repository is the privileged control plane for dependency automation.
   substitutes for the process lifecycle's host-selected semantic review.
 - Run `npm run check` before publishing a change.
 - Keep production automerge disabled. Consumer adoption remains authorized by merging its reviewed PR.
+- Materialize npm locks with `--ignore-scripts`; approve only exact `re2@1.26.1`,
+  explicitly deny unrelated install scripts, and verify the native RE2 runtime before
+  running either canonical Renovate validator.
 
 <!-- engineering-process:start -->
 ## Engineering process
