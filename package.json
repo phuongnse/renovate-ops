@@ -15,6 +15,11 @@
     "bootstrap:protect": "node scripts/configure-branch-protection.mjs",
     "bootstrap:protect-all": "node scripts/configure-repository-protections.mjs"
   },
+  "allowScripts": {
+    "core-js-pure": false,
+    "dtrace-provider": false,
+    "re2@1.26.1": true
+  },
   "devDependencies": {
     "renovate": "44.37.1"
   }

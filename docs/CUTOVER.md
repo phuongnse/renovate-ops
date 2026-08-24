@@ -9,7 +9,10 @@ The Mend-hosted Renovate App is not removed during bootstrap.
 - The private GitHub App is installed with selected access to every allowlisted repository.
 - Repository variable `RENOVATE_APP_CLIENT_ID` and secret `RENOVATE_APP_PRIVATE_KEY` exist.
 - A manual full dry-run completes successfully for every allowlisted repository.
-- Logs show the exact post-upgrade command accepted and no unexpected writes or repository discovery.
+- Logs show no post-upgrade command, unexpected write, or repository discovery.
+- CI materializes npm with scripts disabled, rebuilds only policy-approved exact
+  `re2@1.26.1`, proves its native module, and both canonical validators complete
+  without an RE2 fallback warning or error diagnostic.
 
 ## Cutover sequence
 

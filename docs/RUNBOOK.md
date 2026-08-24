@@ -6,6 +6,14 @@ The `Renovate` workflow runs in production when the installed GitHub App deliver
 
 Review the public operations repository's Actions history and any open issue named `Renovate production run is failing`. Successful recovery closes that incident automatically. Never place credentials or private-repository data in workflow logs or incident comments.
 
+Before local validation or CI profile execution, run `npm ci --ignore-scripts` and
+then `processctl setup --project-root . --profile review --apply --allow
+project-files`. The setup action rebuilds only exact policy-approved `re2`; the
+environment probe must report `Renovate validation runtime ready`. Treat a missing
+`re2.node`, install-script inventory drift, runtime import failure, or any Renovate
+RE2 fallback diagnostic as deterministic failure. Never use
+`RENOVATE_X_IGNORE_RE2`, broaden script approval, or substitute another validator.
+
 Each production attempt has a separate bounded NDJSON log. The first complete result
 is classified. `lockfile-error` and missing-completion outcomes wait 30 seconds and
 receive exactly one idempotent retry; malformed logs, unexpected or duplicate
@@ -13,14 +21,14 @@ repositories, non-lockfile results, and non-retryable artifact failures stop
 immediately. A second failure opens or updates the incident and never finalizes a
 partial adoption.
 
-## Adoption branch ownership
+## Process adoption ownership
 
-The `automation/renovate/engineering-process-authority` branch is exclusively
-bot-owned. Do not amend, rebase, or push project cleanup onto it. Use a normal reviewed
-branch for a one-time combined cutover, close any previously edited bot PR, and allow
-the next release event to create a fresh bot-owned branch. Future authority updates
-must remain fully generated so Renovate can update them without an Edited/Blocked
-notification.
+Renovate does not create process-authority branches or PRs. The consumer lifecycle
+host prepares the complete checkpoint, runs required profiles, obtains independent
+semantic review, resolves findings, and records completion before source or PR
+publication. Publication automation may then push `automation/process/*` and create a
+ready PR. Do not edit that completed checkpoint; the configured human owner alone
+merges it.
 
 ## Rotate a reusable policy trust root
 
@@ -39,7 +47,8 @@ notification.
 ## Add a repository
 
 1. Verify the repository is owned by `phuongnse`, has required branch protection, and contains a reviewed Renovate config.
-2. If it adopts `engineering-process`, verify its post-upgrade command exactly matches the global allowlist and its adoption CI blocks merge on drift.
+2. If it adopts `engineering-process`, verify the Renovate authority rule is disabled
+   and its lifecycle-host publication path runs adoption checks before PR creation.
 3. In the GitHub App installation settings, add selected access to the repository.
 4. Add the exact full name to `repositories.json` through a pull request.
 5. Run `npm run check`, merge, and dispatch a dry-run.

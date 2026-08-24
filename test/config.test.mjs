@@ -7,7 +7,13 @@ import test from 'node:test';
 const require = createRequire(import.meta.url);
 const root = new URL('../', import.meta.url);
 const config = require('../config.cjs');
+const renovateConfig = JSON.parse(
+  await readFile(new URL('.github/renovate.json5', root)),
+);
 const repositories = JSON.parse(await readFile(new URL('repositories.json', root)));
+const packageDocument = JSON.parse(await readFile(new URL('package.json', root)));
+const processManifest = JSON.parse(await readFile(new URL('.process/project.json', root)));
+const npmConfig = await readFile(new URL('.npmrc', root), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('github-app-manifest.json', root)));
 const workflow = await readFile(new URL('.github/workflows/renovate.yml', root), 'utf8');
 const branchProtection = await readFile(
@@ -16,10 +22,6 @@ const branchProtection = await readFile(
 );
 const manifestServer = await readFile(
   new URL('scripts/github-app-manifest-server.mjs', root),
-  'utf8',
-);
-const independentWorkflow = await readFile(
-  new URL('.github/workflows/independent-review.yml', root),
   'utf8',
 );
 const policyWorkflow = await readFile(
@@ -33,6 +35,37 @@ const repositoryProtections = await readFile(
 );
 const readme = await readFile(new URL('README.md', root), 'utf8');
 const runbook = await readFile(new URL('docs/RUNBOOK.md', root), 'utf8');
+const validationRuntime = await readFile(
+  new URL('scripts/verify-validation-runtime.mjs', root),
+  'utf8',
+);
+
+test('validation dependency scripts are exact, denied by default, and setup-owned', () => {
+  assert.deepEqual(packageDocument.allowScripts, {
+    'core-js-pure': false,
+    'dtrace-provider': false,
+    're2@1.26.1': true,
+  });
+  assert.equal(npmConfig, 'strict-allow-scripts=true\n');
+  const requirement = processManifest.environment.requirements.find(
+    ({ id }) => id === 'validation-runtime',
+  );
+  assert.ok(requirement);
+  assert.deepEqual(requirement.probe.run, ['node', 'scripts/verify-validation-runtime.mjs']);
+  assert.equal(requirement.setupAction, 'prepare-validation-runtime');
+  const action = processManifest.environment.setupActions.find(
+    ({ id }) => id === 'prepare-validation-runtime',
+  );
+  assert.deepEqual(action.run, ['npm', 'rebuild', 're2']);
+  assert.deepEqual(action.mutations, ['project-files']);
+  assert.match(validationRuntime, /node_modules\/re2\/build\/Release\/re2\.node/);
+  assert.doesNotMatch(validationRuntime, /RENOVATE_X_IGNORE_RE2/);
+
+  const install = ciWorkflow.indexOf('run: npm ci --ignore-scripts');
+  const setup = ciWorkflow.indexOf('processctl setup');
+  const profiles = ciWorkflow.indexOf('processctl verify --project-root . --profile development');
+  assert.ok(install >= 0 && install < setup && setup < profiles);
+});
 
 test('global configuration has a closed repository boundary', () => {
   assert.deepEqual(config.repositories, repositories);
@@ -56,13 +89,21 @@ test('global configuration has a closed repository boundary', () => {
   assert.deepEqual(containerRepositories, repositories);
 });
 
-test('only the process adoption command is executable', () => {
+test('no Renovate post-upgrade command can impersonate process adoption', () => {
   assert.equal(config.allowScripts, false);
   assert.equal(config.allowPlugins, false);
   assert.equal(config.allowShellExecutorForPostUpgradeCommands, false);
-  assert.deepEqual(config.allowedCommands, [
-    '^python \\.process/adopt-process\\.py --project-root \\. --requirements-lock requirements/process\\.txt$',
-  ]);
+  assert.deepEqual(config.allowedCommands, []);
+  assert.equal(renovateConfig.enabled, true);
+  assert.equal(Object.hasOwn(renovateConfig, 'postUpgradeTasks'), false);
+  const authorityRule = renovateConfig.packageRules.find((rule) =>
+    rule.matchPackageNames?.includes('engineering-process')
+  );
+  assert.ok(authorityRule);
+  assert.equal(authorityRule.enabled, false);
+  assert.equal(authorityRule.automerge, false);
+  assert.match(ciWorkflow, /automation\/process\/engineering-process/);
+  assert.doesNotMatch(ciWorkflow, /automation\/renovate\/engineering-process/);
 });
 
 test('workflow scopes a short-lived app token to the same allowlist', () => {
@@ -98,23 +139,32 @@ test('production Renovate is activated by a bounded authenticated release event'
   assert.match(workflow, /node scripts\/wait-for-renovate-retry\.mjs/);
   assert.match(workflow, /node scripts\/validate-renovate-log\.mjs "\$RENOVATE_ATTEMPT_TWO_LOG" repositories\.json/);
   assert.equal((workflow.match(/name: Renovate production attempt [12]/g) ?? []).length, 2);
-  assert.match(
-    workflow,
-    /steps\.production_attempt_one\.outputs\.status == 'passed' \|\|\n\s+steps\.production_attempt_two\.outcome == 'success'/,
-  );
-  assert.match(
-    workflow,
-    /node scripts\/finalize-adoption-prs\.mjs\n          "\$GITHUB_EVENT_PATH"\n          repositories\.json/,
-  );
-  assert.match(workflow, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
+  assert.doesNotMatch(workflow, /finalize-adoption-prs|markPullRequestReadyForReview/);
+  assert.match(workflow, /token: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
 });
 
-test('process adoption branches remain bot-owned after the reviewed cutover', () => {
+test('process adoption publication belongs to the lifecycle host', () => {
   for (const document of [readme, runbook]) {
-    assert.match(document, /automation\/renovate\/engineering-process-authority/);
-    assert.match(document, /bot-owned/i);
-    assert.match(document, /normal reviewed\s+branch/i);
+    assert.match(document, /lifecycle\s+host/i);
+    assert.match(document, /before source\s+or PR\s+publication/i);
+    assert.doesNotMatch(document, /bot-owned/i);
   }
+});
+
+test('superseded CI semantic-review and adoption-finalizer sources are absent', async () => {
+  for (const path of [
+    '.github/workflows/independent-review.yml',
+    'scripts/finalize-adoption-prs.mjs',
+    'scripts/independent-review.mjs',
+  ]) {
+    await assert.rejects(readFile(new URL(path, root)), { code: 'ENOENT' });
+  }
+});
+
+test('trust-root rotation retains proof-before-cutover and restoration guidance', () => {
+  assert.match(runbook, /pin self-CI to that exact main commit/i);
+  assert.match(runbook, /Restore the old context if cutover cannot complete/i);
+  assert.match(runbook, /Retire the old caller and workflow only after the new context is active/i);
 });
 
 test('runtime and actions are immutable and Docker socket is unavailable', () => {
@@ -153,10 +203,10 @@ test('manifest bootstrap binds the callback to an unguessable state', () => {
   assert.match(manifestServer, /hasValidState\(url\.searchParams\.get\('state'\)\)/);
 });
 
-test('main protection requires CI, independent review, and immutable history', () => {
+test('main protection requires CI, policy verification, and immutable history', () => {
   assert.match(
     branchProtection,
-    /contexts: \['validate', 'independent-review \/ independent-review'\]/,
+    /contexts: \['validate', 'policy-verification \/ policy-verification'\]/,
   );
   assert.match(branchProtection, /enforce_admins: true/);
   assert.match(branchProtection, /required_pull_request_reviews: null/);
@@ -168,51 +218,40 @@ test('main protection requires CI, independent review, and immutable history', (
   assert.doesNotMatch(branchProtection, /dismissal_restrictions/);
 });
 
-test('independent review resolves verifier code from the called workflow SHA', () => {
-  assert.match(independentWorkflow, /permissions:\n  contents: read/);
-  assert.match(independentWorkflow, /repository: \$\{\{ job\.workflow_repository \}\}/);
-  assert.match(independentWorkflow, /ref: \$\{\{ job\.workflow_sha \}\}/);
-  assert.match(independentWorkflow, /TRUSTED_WORKFLOW_SHA: \$\{\{ job\.workflow_sha \}\}/);
-  assert.doesNotMatch(independentWorkflow, /pull_request_target|secrets:\s*inherit/);
-  assert.match(
-    ciWorkflow,
-    /uses: phuongnse\/renovate-ops\/\.github\/workflows\/independent-review\.yml@[0-9a-f]{40}/,
-  );
-  assert.match(
-    ciWorkflow,
-    /independent-review:\n    name: independent-review\n    if: github\.event_name == 'pull_request'/,
-  );
-});
-
-test('policy trust root is introduced without switching the current governor', () => {
+test('policy verification resolves verifier code from the exact Stage A main SHA', () => {
   assert.match(policyWorkflow, /permissions:\n  contents: read/);
   assert.match(policyWorkflow, /repository: \$\{\{ job\.workflow_repository \}\}/);
   assert.match(policyWorkflow, /ref: \$\{\{ job\.workflow_sha \}\}/);
-  assert.match(policyWorkflow, /scripts\/policy-verification\.mjs/);
-  assert.match(policyWorkflow, /name: policy-verification/);
+  assert.match(policyWorkflow, /TRUSTED_WORKFLOW_SHA: \$\{\{ job\.workflow_sha \}\}/);
   assert.doesNotMatch(policyWorkflow, /pull_request_target|secrets:\s*inherit/);
   assert.match(
     ciWorkflow,
-    /independent-review\.yml@48a644b081ea9d098796432750f892e2e3f44614/,
+    /uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@a8bd528634b299dda428863f41784ad4f962afd7/,
   );
-  assert.doesNotMatch(ciWorkflow, /policy-verification\.yml/);
+  assert.match(
+    ciWorkflow,
+    /policy-verification:\n    name: policy-verification\n    if: github\.event_name == 'pull_request'\n    permissions:\n      contents: read\n      pull-requests: read\n    uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@a8bd528634b299dda428863f41784ad4f962afd7/,
+  );
+  assert.doesNotMatch(ciWorkflow, /pull-requests: write/);
+  assert.doesNotMatch(ciWorkflow, /secrets:\s*inherit/);
+  assert.doesNotMatch(ciWorkflow, /independent-review/);
 });
 
 test('single-maintainer protection covers every allowlisted repository', () => {
   for (const repository of repositories) assert.match(repositoryProtections, new RegExp(repository));
   assert.match(repositoryProtections, /required_pull_request_reviews: null/);
-  assert.match(repositoryProtections, /'independent-review \/ independent-review'/);
+  assert.match(repositoryProtections, /'policy-verification \/ policy-verification'/);
   assert.match(repositoryProtections, /required_status_checks: \{ strict: true, contexts \}/);
   assert.match(repositoryProtections, /allow_force_pushes: false/);
   assert.match(repositoryProtections, /allow_deletions: false/);
 });
 
-test('event-driven review binds dispatch inputs to the live pull request', () => {
-  assert.match(independentWorkflow, /reviewed_pr_number:/);
-  assert.match(independentWorkflow, /reviewed_head_sha:/);
-  assert.match(independentWorkflow, /repos\/\$GITHUB_REPOSITORY\/pulls\/\$REQUESTED_PR_NUMBER/);
-  assert.match(independentWorkflow, /\.head\.sha[^\n]+REQUESTED_HEAD_SHA/);
-  assert.match(independentWorkflow, /--event-path "\$\{\{ steps\.review\.outputs\.event_path \}\}"/);
-  assert.doesNotMatch(independentWorkflow, /GITHUB_EVENT_PATH: \$\{\{ steps\.review\.outputs\.event_path \}\}/);
-  assert.doesNotMatch(independentWorkflow, /\bschedule:|workflow_dispatch:/);
+test('event-driven policy verification binds inputs to the live pull request', () => {
+  assert.match(policyWorkflow, /target_pr_number:/);
+  assert.match(policyWorkflow, /target_head_sha:/);
+  assert.match(policyWorkflow, /repos\/\$GITHUB_REPOSITORY\/pulls\/\$REQUESTED_PR_NUMBER/);
+  assert.match(policyWorkflow, /\.head\.sha[^\n]+REQUESTED_HEAD_SHA/);
+  assert.match(policyWorkflow, /--event-path "\$\{\{ steps\.target\.outputs\.event_path \}\}"/);
+  assert.doesNotMatch(policyWorkflow, /GITHUB_EVENT_PATH: \$\{\{ steps\.target\.outputs\.event_path \}\}/);
+  assert.doesNotMatch(policyWorkflow, /\bschedule:|workflow_dispatch:/);
 });

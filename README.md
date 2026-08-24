@@ -4,33 +4,31 @@ Publicly auditable control plane for the self-hosted Renovate instance that mana
 
 ## Operating model
 
-An authenticated `engineering-process-published` event creates a short-lived installation token for the private GitHub App, starts the immutable Renovate container, and processes only `repositories.json`. Repository configuration remains local to each consumer. Delivery is at least once and Renovate is idempotent; there is no scheduled production poll. Renovate may create draft dependency and process-adoption PRs, but it never merges them.
+An authenticated `engineering-process-published` event creates a short-lived installation token for the private GitHub App, starts the immutable Renovate container, and processes only `repositories.json`. Repository configuration remains local to each consumer. Delivery is at least once and Renovate is idempotent; there is no scheduled production poll. Renovate may create normal dependency PRs, but it never creates engineering-process authority PRs and never merges.
 
-`automation/renovate/engineering-process-authority` is bot-owned. Humans and agents
-must not push commits to it: Renovate correctly blocks updates after a manual branch
-edit. A one-time process cutover that combines project cleanup with adoption uses a
-normal reviewed branch; after that cutover, every authority branch is generated and
-updated only by Renovate.
+Engineering-process authority adoption belongs to the consumer-selected lifecycle
+host. It prepares an unpublished checkpoint, completes project verification and
+independent semantic review, resolves findings, and runs `change finish` before source
+or PR publication. The configured human owner alone merges the resulting PR.
 
 A complete production attempt is strictly classified. Only a `lockfile-error` or a
 missing completion may receive one idempotent recovery attempt after 30 seconds, using
 the same authenticated event, allowlist, immutable runtime, and App authorization.
-Deterministic validation or artifact failures do not retry. Adoption finalization runs
-only after one complete attempt passes.
+Deterministic validation or artifact failures do not retry. No static check or
+Renovate finalizer can satisfy semantic review requirements or mark an adoption
+candidate ready.
 
-The only permitted post-upgrade command is:
-
-```text
-python .process/adopt-process.py --project-root . --requirements-lock requirements/process.txt
-```
-
-Shell execution, arbitrary scripts, plugins, repository discovery, and Docker socket access are disabled.
+Post-upgrade commands, shell execution, arbitrary scripts, plugins, repository
+discovery, and Docker socket access are disabled. The lifecycle host runs the managed
+adoption command outside Renovate under the consumer's process contract.
 
 ## Bootstrap
 
-1. Run `npm ci --ignore-scripts && npm run check`.
+1. Run `npm ci --ignore-scripts`, then
+   `processctl setup --project-root . --profile review --apply --allow project-files`,
+   then `npm run check`.
 2. Create the public repository and push this reviewed source.
-3. Run `npm run bootstrap:protect`. Required CI, independent review, code ownership, and immutable history are production preconditions.
+3. Run `npm run bootstrap:protect`. Required CI, immutable policy verification, code ownership, and immutable history are production preconditions. Semantic checkpoint review remains a separate pre-PR engineering-process gate.
 4. Run `node scripts/github-app-manifest-server.mjs` and open the printed localhost URL.
 5. Review and create the private GitHub App. The callback stores the one-time response at `.local/github-app.json` with mode `0600`.
 6. Run `node scripts/configure-github.mjs`. It writes the Client ID and private key to encrypted repository configuration, keeps `RENOVATE_ENABLED=false`, then deletes the local response.
@@ -53,8 +51,16 @@ Both Renovate's target list and the installation token's repository scope are de
 
 ```bash
 npm ci --ignore-scripts
+processctl setup --project-root . --profile review --apply --allow project-files
 npm run check
 ```
 
+The committed npm `allowScripts` policy permits only exact `re2@1.26.1` and
+explicitly denies `core-js-pure` and `dtrace-provider`. Setup rebuilds only `re2`.
+The environment probe then binds the lock's complete install-script inventory, the
+regular `node_modules/re2/build/Release/re2.node` file, exact package version, and a
+working native import before either unchanged Renovate validator runs. Do not set
+`RENOVATE_X_IGNORE_RE2`, suppress validator output, or replace the canonical commands.
+
 Operational procedures are in `docs/RUNBOOK.md`. Security assumptions are in `docs/THREAT_MODEL.md`.
-The single-maintainer authorization and independent-verification contract is in `docs/GOVERNANCE.md`.
+The single-maintainer authorization, semantic-review boundary, and policy-verification contract are in `docs/GOVERNANCE.md`.
