@@ -1,13 +1,13 @@
-name: Independent verification
+name: Policy verification
 
 on:
   workflow_call:
     inputs:
-      reviewed_pr_number:
+      target_pr_number:
         description: Pull request number supplied by an event-driven caller
         required: false
         type: string
-      reviewed_head_sha:
+      target_head_sha:
         description: Exact pull request head supplied by an event-driven caller
         required: false
         type: string
@@ -17,22 +17,22 @@ permissions:
   pull-requests: read
 
 jobs:
-  independent-review:
-    name: independent-review
+  policy-verification:
+    name: policy-verification
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
     steps:
-      - name: Resolve the immutable review event
-        id: review
+      - name: Resolve the immutable policy event
+        id: target
         env:
           GH_TOKEN: ${{ github.token }}
-          REQUESTED_PR_NUMBER: ${{ inputs.reviewed_pr_number }}
-          REQUESTED_HEAD_SHA: ${{ inputs.reviewed_head_sha }}
+          REQUESTED_PR_NUMBER: ${{ inputs.target_pr_number }}
+          REQUESTED_HEAD_SHA: ${{ inputs.target_head_sha }}
         run: |
-          event_path="$RUNNER_TEMP/independent-review-event.json"
+          event_path="$RUNNER_TEMP/policy-verification-event.json"
           if test -n "$REQUESTED_PR_NUMBER" || test -n "$REQUESTED_HEAD_SHA"; then
             test -n "$REQUESTED_PR_NUMBER"
             test -n "$REQUESTED_HEAD_SHA"
@@ -56,13 +56,13 @@ jobs:
             printf 'head_sha=%s\n' "$head_sha"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Check out reviewed pull request
+      - name: Check out policy target
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ steps.review.outputs.head_sha }}
-          path: reviewed
+          ref: ${{ steps.target.outputs.head_sha }}
+          path: target
 
       - name: Check out immutable verifier
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -82,17 +82,17 @@ jobs:
           TRUSTED_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
           TRUSTED_WORKFLOW_SHA: ${{ job.workflow_sha }}
         run: >-
-          node trusted-verifier/scripts/independent-review.mjs
-          --project-root reviewed
-          --event-path "${{ steps.review.outputs.event_path }}"
-          --output "$RUNNER_TEMP/independent-review/report.json"
+          node trusted-verifier/scripts/policy-verification.mjs
+          --project-root target
+          --event-path "${{ steps.target.outputs.event_path }}"
+          --output "$RUNNER_TEMP/policy-verification/report.json"
 
       - name: Publish verification evidence
         if: success()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: independent-review-${{ steps.review.outputs.pr_number }}-${{ steps.review.outputs.head_sha }}
-          path: ${{ runner.temp }}/independent-review/report.json
+          name: policy-verification-${{ steps.target.outputs.pr_number }}-${{ steps.target.outputs.head_sha }}
+          path: ${{ runner.temp }}/policy-verification/report.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 9

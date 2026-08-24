@@ -2,11 +2,6 @@ import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
-const allowlistedRepositories = JSON.parse(
-  await readFile(new URL('../repositories.json', import.meta.url), 'utf8'),
-);
-const exactAdoptionCommand =
-  'python .process/adopt-process.py --project-root . --requirements-lock requirements/process.txt';
 const maximumChangedFiles = 1_000;
 const maximumReviewedBlobBytes = 2_000_000;
 const maximumAggregateBytes = 25_000_000;
@@ -157,20 +152,23 @@ async function assertRenovateContract(root) {
   if (!loaded) throw new Error('repository must declare a Renovate configuration');
   const config = loaded.value;
   if (config.automerge !== false) throw new Error(`${loaded.path}: automerge must be false`);
-  if (config.draftPR !== true) throw new Error(`${loaded.path}: draftPR must be true`);
   if (config.branchPrefix !== 'automation/renovate/') {
     throw new Error(`${loaded.path}: unexpected branchPrefix`);
   }
   for (const rule of config.packageRules ?? []) {
     if (rule.automerge === true) throw new Error(`${loaded.path}: package rule enables automerge`);
   }
-  if (config.postUpgradeTasks) {
-    if (
-      config.postUpgradeTasks.executionMode !== 'branch' ||
-      JSON.stringify(config.postUpgradeTasks.commands) !== JSON.stringify([exactAdoptionCommand])
-    ) {
-      throw new Error(`${loaded.path}: post-upgrade task exceeds the adoption contract`);
-    }
+  if (config.postUpgradeTasks !== undefined) {
+    throw new Error(`${loaded.path}: postUpgradeTasks must be absent`);
+  }
+  const processRules = (config.packageRules ?? []).filter((rule) =>
+    rule?.matchPackageNames?.includes('engineering-process')
+  );
+  if (
+    processRules.length > 0 &&
+    (processRules.length !== 1 || processRules[0].enabled !== false)
+  ) {
+    throw new Error(`${loaded.path}: engineering-process authority rule must be disabled`);
   }
 }
 
@@ -202,8 +200,8 @@ async function assertOperationsBoundary(root, repository) {
   ]) {
     if (!config.includes(required)) throw new Error(`operations config missing ${required}`);
   }
-  if (!config.includes('adopt-process\\.py --project-root \\. --requirements-lock')) {
-    throw new Error('operations command allowlist is not exact');
+  if (!config.includes('allowedCommands: []')) {
+    throw new Error('operations command allowlist must be empty');
   }
   if (/mount-docker-socket:\s*true/.test(workflow)) {
     throw new Error('Renovate workflow exposes the Docker socket');
@@ -217,9 +215,12 @@ async function main() {
   const event = JSON.parse(await readFile(eventPath, 'utf8'));
   const repository = process.env.GITHUB_REPOSITORY;
   const pullRequest = event.pull_request;
-  if (!pullRequest) throw new Error('independent review requires a pull_request event');
-  if (repository !== event.repository?.full_name || !allowlistedRepositories.includes(repository)) {
-    throw new Error(`repository is outside the reviewed allowlist: ${repository}`);
+  if (!pullRequest) throw new Error('policy verification requires a pull_request event');
+  if (!/^phuongnse\/[a-z0-9._-]+$/.test(repository ?? '')) {
+    throw new Error(`caller repository identity is invalid: ${repository}`);
+  }
+  if (repository !== event.repository?.full_name) {
+    throw new Error(`policy event repository does not match the caller: ${repository}`);
   }
   if (pullRequest.base.ref !== 'main') throw new Error('pull request must target main');
   const baseSha = pullRequest.base.sha;
@@ -251,7 +252,7 @@ async function main() {
     schemaVersion: 1,
     status: 'passed',
     governanceMode: 'single-maintainer',
-    verificationKind: 'independent-automated',
+    verificationKind: 'policy-verification',
     repository,
     baseSha,
     headSha,
@@ -268,6 +269,6 @@ async function main() {
 try {
   await main();
 } catch (error) {
-  process.stderr.write(`independent review failed: ${error.message}\n`);
+  process.stderr.write(`policy verification failed: ${error.message}\n`);
   process.exitCode = 1;
 }

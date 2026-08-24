@@ -4,7 +4,7 @@ const repository = 'phuongnse/renovate-ops';
 const protection = {
   required_status_checks: {
     strict: true,
-    contexts: ['validate', 'independent-review / independent-review'],
+    contexts: ['validate', 'policy-verification / policy-verification'],
   },
   enforce_admins: true,
   required_pull_request_reviews: null,
@@ -43,5 +43,5 @@ if (result.status !== 0) {
 }
 
 process.stdout.write(
-  'Protected main with required CI, independent verification, and linear history.\n',
+  'Protected main with required CI, policy verification, and linear history.\n',
 );

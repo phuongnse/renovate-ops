@@ -3,10 +3,10 @@ import { spawnSync } from 'node:child_process';
 const policies = {
   'phuongnse/renovate-ops': [
     'validate',
-    'independent-review / independent-review',
+    'policy-verification / policy-verification',
   ],
   'phuongnse/engineering-process': [
-    'independent-review / independent-review',
+    'policy-verification / policy-verification',
     'verify (ubuntu-latest, 3.11)',
     'verify (ubuntu-latest, 3.14)',
     'verify (macos-latest, 3.14)',
@@ -14,7 +14,7 @@ const policies = {
     'Verify exact Release PR candidate',
   ],
   'phuongnse/axis': [
-    'independent-review / independent-review',
+    'policy-verification / policy-verification',
     'PR guard',
     'Process contract (ubuntu-latest)',
     'Process contract (windows-latest)',
@@ -26,7 +26,7 @@ const policies = {
     'Markdown link check',
   ],
   'phuongnse/axis-reference-product': [
-    'independent-review / independent-review',
+    'policy-verification / policy-verification',
     'Process contract (ubuntu-latest)',
     'Process contract (windows-latest)',
     'Build and test',

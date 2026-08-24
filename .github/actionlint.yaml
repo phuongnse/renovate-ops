@@ -1,5 +1,5 @@
 paths:
-  .github/workflows/independent-review.yml:
+  .github/workflows/policy-verification.yml:
     ignore:
       # GitHub.com supports these reusable-workflow identity properties. Remove
       # this narrow compatibility rule once actionlint's context schema catches up.
