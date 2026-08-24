@@ -13,7 +13,9 @@ Every default-branch change passes three separate control planes:
    `policy-verification` check and bounded static evidence from a clean, read-only
    runner.
 
-The merge button is enabled only after both control planes pass. Adoption and release pull requests never automerge.
+PR publication already requires the first control plane to have completed. The merge
+button becomes eligible only after both GitHub control planes also pass. Adoption and
+release pull requests never automerge.
 
 ## Immutable policy verification
 
@@ -21,7 +23,8 @@ Consumers reference `.github/workflows/policy-verification.yml` by a full commit
 
 The verifier:
 
-- accepts only pull requests targeting `main` in `repositories.json`;
+- accepts a syntactically valid `phuongnse/*` caller only when the event repository,
+  live pull request, checkout, and immutable head all identify that same caller;
 - binds evidence to full base and head commit SHAs;
 - reviews bounded regular-file changes and rejects credential-shaped content;
 - requires immutable SHA or digest pins for every workflow action;
@@ -29,6 +32,9 @@ The verifier:
 - never receives consumer secrets or a write token;
 - emits retained JSON evidence identifying the verifier commit.
 - emits no semantic verdict, lifecycle quality assessment, or lifecycle finding.
+
+`repositories.json` remains scoped only to production Renovate target authorization;
+it does not authorize or constrain callers of the read-only reusable policy workflow.
 
 Changes to the verifier are checked by the previously pinned verifier revision and
 semantically reviewed through the normal pre-PR lifecycle. This creates a forward
