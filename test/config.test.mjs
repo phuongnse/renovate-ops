@@ -22,6 +22,10 @@ const independentWorkflow = await readFile(
   new URL('.github/workflows/independent-review.yml', root),
   'utf8',
 );
+const policyWorkflow = await readFile(
+  new URL('.github/workflows/policy-verification.yml', root),
+  'utf8',
+);
 const ciWorkflow = await readFile(new URL('.github/workflows/ci.yml', root), 'utf8');
 const repositoryProtections = await readFile(
   new URL('scripts/configure-repository-protections.mjs', root),
@@ -178,6 +182,20 @@ test('independent review resolves verifier code from the called workflow SHA', (
     ciWorkflow,
     /independent-review:\n    name: independent-review\n    if: github\.event_name == 'pull_request'/,
   );
+});
+
+test('policy trust root is introduced without switching the current governor', () => {
+  assert.match(policyWorkflow, /permissions:\n  contents: read/);
+  assert.match(policyWorkflow, /repository: \$\{\{ job\.workflow_repository \}\}/);
+  assert.match(policyWorkflow, /ref: \$\{\{ job\.workflow_sha \}\}/);
+  assert.match(policyWorkflow, /scripts\/policy-verification\.mjs/);
+  assert.match(policyWorkflow, /name: policy-verification/);
+  assert.doesNotMatch(policyWorkflow, /pull_request_target|secrets:\s*inherit/);
+  assert.match(
+    ciWorkflow,
+    /independent-review\.yml@48a644b081ea9d098796432750f892e2e3f44614/,
+  );
+  assert.doesNotMatch(ciWorkflow, /policy-verification\.yml/);
 });
 
 test('single-maintainer protection covers every allowlisted repository', () => {
