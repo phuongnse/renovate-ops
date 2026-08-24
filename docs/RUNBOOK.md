@@ -22,6 +22,20 @@ publication. Publication automation may then push `automation/process/*` and cre
 ready PR. Do not edit that completed checkpoint; the configured human owner alone
 merges it.
 
+## Rotate a reusable policy trust root
+
+1. Introduce the new immutable workflow and verifier in a PR governed by the current
+   required verifier and protection context. Do not change the caller or live
+   protection in this introduction stage.
+2. Merge the introduction through the configured human owner and resolve its exact
+   commit on `main`.
+3. In a separate lifecycle change, pin self-CI to that exact main commit and prove the
+   new policy check on the final checkpoint.
+4. Only after the new check passes, switch live branch protection to its exact context.
+   Restore the old context if cutover cannot complete.
+5. Retire the old caller and workflow only after the new context is active. Never pin
+   a reusable workflow to an unmerged commit or weaken protection to break a cycle.
+
 ## Add a repository
 
 1. Verify the repository is owned by `phuongnse`, has required branch protection, and contains a reviewed Renovate config.

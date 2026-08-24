@@ -106,13 +106,13 @@ test('production Renovate is activated by a bounded authenticated release event'
   assert.match(workflow, /node scripts\/validate-renovate-log\.mjs "\$RENOVATE_ATTEMPT_TWO_LOG" repositories\.json/);
   assert.equal((workflow.match(/name: Renovate production attempt [12]/g) ?? []).length, 2);
   assert.doesNotMatch(workflow, /finalize-adoption-prs|markPullRequestReadyForReview/);
-  assert.match(workflow, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
+  assert.match(workflow, /token: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
 });
 
 test('process adoption publication belongs to the lifecycle host', () => {
   for (const document of [readme, runbook]) {
-    assert.match(document, /lifecycle host/i);
-    assert.match(document, /before (?:source|PR) publication/i);
+    assert.match(document, /lifecycle\s+host/i);
+    assert.match(document, /before source\s+or PR\s+publication/i);
     assert.doesNotMatch(document, /bot-owned/i);
   }
 });
@@ -168,7 +168,7 @@ test('main protection requires CI, policy verification, and immutable history', 
   assert.doesNotMatch(branchProtection, /dismissal_restrictions/);
 });
 
-test('policy verification resolves verifier code from the called workflow SHA', () => {
+test('new policy root is immutable while self-CI retains the existing governor', () => {
   assert.match(policyWorkflow, /permissions:\n  contents: read/);
   assert.match(policyWorkflow, /repository: \$\{\{ job\.workflow_repository \}\}/);
   assert.match(policyWorkflow, /ref: \$\{\{ job\.workflow_sha \}\}/);
@@ -176,12 +176,13 @@ test('policy verification resolves verifier code from the called workflow SHA', 
   assert.doesNotMatch(policyWorkflow, /pull_request_target|secrets:\s*inherit/);
   assert.match(
     ciWorkflow,
-    /uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@[0-9a-f]{40}/,
+    /uses: phuongnse\/renovate-ops\/\.github\/workflows\/independent-review\.yml@48a644b081ea9d098796432750f892e2e3f44614/,
   );
   assert.match(
     ciWorkflow,
-    /policy-verification:\n    name: policy-verification\n    if: github\.event_name == 'pull_request'/,
+    /independent-review:\n    name: independent-review\n    if: github\.event_name == 'pull_request'/,
   );
+  assert.doesNotMatch(ciWorkflow, /policy-verification\.yml/);
 });
 
 test('single-maintainer protection covers every allowlisted repository', () => {
