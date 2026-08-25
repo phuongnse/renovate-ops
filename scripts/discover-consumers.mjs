@@ -15,8 +15,6 @@ const MAX_API_BYTES = 1_000_000;
 const MAX_AGGREGATE_API_BYTES = 16_000_000;
 const MAX_CONFIG_BYTES = 256_000;
 const API_TIMEOUT_MS = 30_000;
-const EXACT_ADOPTION_COMMAND =
-  'python .process/adopt-process.py --project-root . --requirements-lock requirements/process.txt';
 
 function digest(content) {
   return `sha256:${createHash('sha256').update(content).digest('hex')}`;
@@ -111,12 +109,14 @@ function decodeConfig(document, label) {
   return { config, content };
 }
 
-export function validateConsumerIntent(config, label = 'consumer config') {
-  if (!Object.hasOwn(config, 'enabled')) return false;
+export function classifyConsumerIntent(config, label = 'consumer config') {
+  if (!Object.hasOwn(config, 'enabled')) return 'absent';
   if (typeof config.enabled !== 'boolean') throw new Error(`${label}.enabled must be boolean`);
-  if (!config.enabled) return false;
+  if (!config.enabled) return 'disabled';
   if (config.automerge !== false) throw new Error(`${label}.automerge must be false`);
-  if (config.draftPR !== true) throw new Error(`${label}.draftPR must be true`);
+  if (Object.hasOwn(config, 'draftPR') && typeof config.draftPR !== 'boolean') {
+    throw new Error(`${label}.draftPR must be boolean when present`);
+  }
   if (config.branchPrefix !== 'automation/renovate/') {
     throw new Error(`${label}.branchPrefix is invalid`);
   }
@@ -126,16 +126,23 @@ export function validateConsumerIntent(config, label = 'consumer config') {
   if (config.packageRules?.some((rule) => rule?.automerge === true)) {
     throw new Error(`${label} enables package-rule automerge`);
   }
-  const tasks = config.postUpgradeTasks;
-  if (
-    tasks === null
-    || typeof tasks !== 'object'
-    || tasks.executionMode !== 'branch'
-    || JSON.stringify(tasks.commands) !== JSON.stringify([EXACT_ADOPTION_COMMAND])
-  ) {
-    throw new Error(`${label}.postUpgradeTasks exceeds the adoption contract`);
+  if (Object.hasOwn(config, 'postUpgradeTasks')) {
+    throw new Error(`${label}.postUpgradeTasks must be absent`);
   }
-  return true;
+  const processRules = (config.packageRules ?? []).filter((rule) =>
+    rule?.matchPackageNames?.includes('engineering-process')
+  );
+  if (
+    processRules.length > 1
+    || processRules.some((rule) => rule.enabled !== false || rule.automerge !== false)
+  ) {
+    throw new Error(`${label}.engineering-process authority rule must be disabled`);
+  }
+  return 'enabled';
+}
+
+export function validateConsumerIntent(config, label = 'consumer config') {
+  return classifyConsumerIntent(config, label) === 'enabled';
 }
 
 async function repositoryCheckpoint(api, repository, defaultBranch) {
@@ -210,11 +217,15 @@ export async function discoverConsumers({
       });
       continue;
     }
-    if (!validateConsumerIntent(selected.config, `${repository.full_name}/${selected.configPath}`)) {
+    const intent = classifyConsumerIntent(
+      selected.config,
+      `${repository.full_name}/${selected.configPath}`,
+    );
+    if (intent !== 'enabled') {
       exclusions.push({
         repository: repository.full_name,
         checkpoint,
-        reason: 'intent-disabled',
+        reason: `intent-${intent}`,
       });
       continue;
     }

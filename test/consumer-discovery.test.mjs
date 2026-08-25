@@ -2,26 +2,24 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  classifyConsumerIntent,
   discoverConsumers,
   revalidateConsumer,
   validateConsumerIntent,
 } from '../scripts/discover-consumers.mjs';
 
 const token = 'installation-token-value';
-const adoptionCommand =
-  'python .process/adopt-process.py --project-root . --requirements-lock requirements/process.txt';
-
 function intent(enabled = true) {
   return {
     enabled,
     automerge: false,
     draftPR: true,
     branchPrefix: 'automation/renovate/',
-    packageRules: [{ automerge: false }],
-    postUpgradeTasks: {
-      commands: [adoptionCommand],
-      executionMode: 'branch',
-    },
+    packageRules: [{
+      automerge: false,
+      enabled: false,
+      matchPackageNames: ['engineering-process'],
+    }],
   };
 }
 
@@ -48,6 +46,7 @@ function encodedConfig(config) {
 function fixtureFetch({
   axisArchived = false,
   axisConfig = intent(true),
+  axisConfigRaw,
   axisConfigStatus = 200,
   axisJsonAlso = false,
   axisOversized = false,
@@ -82,6 +81,15 @@ function fixtureFetch({
           type: 'file',
         });
       }
+      if (axisConfigRaw !== undefined) {
+        const content = Buffer.from(axisConfigRaw);
+        return response({
+          content: content.toString('base64'),
+          encoding: 'base64',
+          size: content.length,
+          type: 'file',
+        });
+      }
       return response(encodedConfig(axisConfig));
     }
     if (path === `/repos/phuongnse/lyric-rail/contents/.github/renovate.json?ref=${lyricSha}`) {
@@ -94,19 +102,27 @@ function fixtureFetch({
   };
 }
 
-test('consumer intent requires explicit enablement and closed adoption policy', () => {
+test('consumer intent requires explicit enablement and lifecycle-host adoption policy', () => {
   assert.equal(validateConsumerIntent(intent(true)), true);
   assert.equal(validateConsumerIntent(intent(false)), false);
   const absent = intent(true);
   delete absent.enabled;
   assert.equal(validateConsumerIntent(absent), false);
+  assert.equal(classifyConsumerIntent(absent), 'absent');
+  assert.equal(classifyConsumerIntent(intent(false)), 'disabled');
   assert.throws(
     () => validateConsumerIntent({ ...intent(true), automerge: true }),
     /automerge must be false/,
   );
   assert.throws(
-    () => validateConsumerIntent({ ...intent(true), postUpgradeTasks: { commands: ['bad'] } }),
-    /adoption contract/,
+    () => validateConsumerIntent({ ...intent(true), postUpgradeTasks: {} }),
+    /postUpgradeTasks must be absent/,
+  );
+  const enabledAuthority = intent(true);
+  enabledAuthority.packageRules[0].enabled = true;
+  assert.throws(
+    () => validateConsumerIntent(enabledAuthority),
+    /authority rule must be disabled/,
   );
 });
 
@@ -145,6 +161,20 @@ test('discovery classifies all absent or disabled intent as a bounded no-op', as
     token,
   });
   assert.equal(absent.exclusions[0].reason, 'intent-absent');
+
+  const absentProperty = intent(true);
+  delete absentProperty.enabled;
+  const classified = await discoverConsumers({
+    fetchImpl: fixtureFetch({ axisConfig: absentProperty, lyricConfig: intent(false) }),
+    token,
+  });
+  assert.deepEqual(
+    classified.exclusions.map(({ reason, repository }) => ({ reason, repository })),
+    [
+      { reason: 'intent-absent', repository: 'phuongnse/axis' },
+      { reason: 'intent-disabled', repository: 'phuongnse/lyric-rail' },
+    ],
+  );
 });
 
 test('discovery rejects ambiguous config and installation bounds', async () => {
@@ -155,6 +185,16 @@ test('discovery rejects ambiguous config and installation bounds', async () => {
   await assert.rejects(
     () => discoverConsumers({ fetchImpl: fixtureFetch({ totalCount: 65 }), token }),
     /between 1 and 64 repositories/,
+  );
+});
+
+test('discovery rejects malformed strict consumer JSON', async () => {
+  await assert.rejects(
+    () => discoverConsumers({
+      fetchImpl: fixtureFetch({ axisConfigRaw: '{not-json}\n' }),
+      token,
+    }),
+    /must use strict JSON/,
   );
 });
 

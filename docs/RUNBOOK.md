@@ -13,26 +13,51 @@ write token. Review the run's per-repository result and any open issue named
 `Renovate production run is failing`. Never place credentials, raw consumer config,
 or private-repository data in public logs or incident comments.
 
-Every production attempt has fresh bounded NDJSON logs. `lockfile-error` and missing
-completion wait 30 seconds and receive exactly one retry; malformed logs, unexpected
-or duplicate repositories, config races, non-lockfile results, and non-retryable
-artifact failures stop immediately. Finalization runs only for the exact consumer
-whose manifest and complete attempt pass.
+Before local validation or CI profile execution, run `npm ci --ignore-scripts` and
+then `processctl setup --project-root . --profile review --apply --allow
+project-files`. The setup action rebuilds only exact policy-approved `re2`; the
+environment probe must report `Renovate validation runtime ready`. Treat a missing
+`re2.node`, install-script inventory drift, runtime import failure, or any Renovate
+RE2 fallback diagnostic as deterministic failure. Never use
+`RENOVATE_X_IGNORE_RE2`, broaden script approval, or substitute another validator.
 
-## Adoption branch ownership
+Each production attempt has a separate bounded NDJSON log. The first complete result
+is classified. `lockfile-error` and missing-completion outcomes wait 30 seconds and
+receive exactly one idempotent retry; malformed logs, unexpected or duplicate
+repositories, config races, non-lockfile results, and non-retryable artifact failures
+stop immediately. A second failure opens or updates the incident. Renovate never
+finalizes process adoption.
 
-`automation/renovate/engineering-process-authority` is exclusively bot-owned. Do not
-amend, rebase, or push cleanup onto it. Use a normal reviewed branch for a one-time
-combined cutover, close any edited bot PR, and let the next release event create a
-fresh bot-owned branch.
+## Process adoption ownership
+
+Renovate does not create process-authority branches or PRs. The consumer lifecycle
+host prepares the complete checkpoint, runs required profiles, obtains independent
+semantic review, resolves findings, and records completion before source or PR
+publication. Publication automation may then push `automation/process/*` and create a
+ready PR. Do not edit that completed checkpoint; the configured human owner alone
+merges it.
+
+## Rotate a reusable policy trust root
+
+1. Introduce the new immutable workflow and verifier in a PR governed by the current
+   required verifier and protection context. Do not change the caller or live
+   protection in this introduction stage.
+2. Merge the introduction through the configured human owner and resolve its exact
+   commit on `main`.
+3. In a separate lifecycle change, pin self-CI to that exact main commit and prove the
+   new policy check on the final checkpoint.
+4. Only after the new check passes, switch live branch protection to its exact context.
+   Restore the old context if cutover cannot complete.
+5. Retire the old caller and workflow only after the new context is active. Never pin
+   a reusable workflow to an unmerged commit or weaken protection to break a cycle.
 
 ## Add a consumer
 
 1. In the consumer, merge a strict Renovate config with explicit `enabled: true`,
-   `automerge: false`, `draftPR: true`, and branch prefix
-   `automation/renovate/`.
-2. For a process consumer, require the exact managed adoption command and adoption CI.
-3. Verify the consumer's own required checks, independent-review pin, and branch protection.
+   `automerge: false`, and branch prefix `automation/renovate/`.
+2. If it adopts `engineering-process`, verify the authority rule is disabled,
+   post-upgrade tasks are absent, and lifecycle-host publication runs adoption checks.
+3. Verify required CI, semantic review, pinned policy verification, and branch protection.
 4. In GitHub App installation settings, grant selected access to the repository.
 5. Dispatch a dry run and verify the reported checkpoint/config digest and proposals.
 

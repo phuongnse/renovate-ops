@@ -21,6 +21,8 @@
 - The ephemeral consumer manifest binds repository, default branch, checkpoint,
   config path, and config digest. The job revalidates it before and after Renovate.
 - GitHub-hosted runners are ephemeral. The Renovate container receives no Docker socket.
+- Repository default branches are trusted inputs. Branch protection, pinned policy
+  verification, and pre-PR semantic lifecycle review remain required controls.
 - Dependency metadata and package artifacts are untrusted external inputs. Consumer
   CI validates generated locks and adoption output before merge.
 
@@ -36,20 +38,24 @@
 - Third-party actions use immutable commit SHAs; the Renovate image uses a
   multi-platform OCI digest.
 - No personal access token, arbitrary shell executor, arbitrary post-upgrade command,
-  plugin loading, lifecycle scripts, cross-consumer write token, or Docker socket.
+  plugin loading, Renovate-executed lifecycle scripts, cross-consumer write token, or
+  Docker socket.
+- Dependency lifecycle scripts are disabled during lock materialization. Project
+  policy approves only exact `re2@1.26.1`, explicitly denies unrelated pending
+  scripts, and setup verifies the native module and runtime import before validation.
 - Authenticated release-event and explicit canary runs serialize and time out before
   the one-hour installation-token lifetime.
 - A complete consumer run may retry once only for a classified transient outcome.
-  Finalization and incident recovery never infer aggregate success from a partial run.
+  Incident recovery never infers aggregate success from a partial run.
 
 ## Residual risks
 
-- A malicious reviewed-and-merged adoption script can access its own repository token
-  during its run. Required review and branch protection remain part of the boundary.
 - The read-only discovery token can observe repository identities and enabled config
   in the App installation. Its output is minimized and the token is never retained.
-- A compromised registry can propose malicious artifacts. Hash locks, provenance,
-  consumer CI, and human merge authorization must reject them.
+- A malicious dependency update can still target workflow or package inputs. Static
+  policy verification, semantic lifecycle review, and branch protection are part of
+  the security boundary; process-adoption scripts never receive the Renovate token.
+- A compromised third-party package registry can propose malicious artifacts. Hash locks, provenance checks, consumer CI, and human review must reject them before merge.
 - GitHub Actions and GitHub App infrastructure are external trusted services.
 - Operations source, workflow logs, and incident issues are public. Private consumer
   support requires a separate logging/disclosure decision.

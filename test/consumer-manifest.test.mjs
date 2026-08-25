@@ -66,6 +66,20 @@ test('consumer manifest rejects duplicates, ordering drift, and extra fields', (
   );
 });
 
+test('one-consumer writer manifest cannot carry sibling repository authority', () => {
+  assert.throws(
+    () => manifestForConsumer({
+      ...first,
+      siblingRepository: second.repository,
+      siblingToken: 'must-not-cross-the-matrix-boundary',
+    }),
+    /unexpected fields/,
+  );
+  const isolated = manifestForConsumer(first);
+  assert.deepEqual(isolated.consumers.map(({ repository }) => repository), [first.repository]);
+  assert.equal(JSON.stringify(isolated).includes(second.repository), false);
+});
+
 test('consumer manifest reader rejects oversized and invalid files', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'renovate-consumer-manifest-'));
   const invalid = path.join(root, 'invalid.json');

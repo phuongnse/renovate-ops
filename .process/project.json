@@ -48,11 +48,13 @@
     "profiles": {
       "development": [
         "git-runtime",
-        "node-runtime"
+        "node-runtime",
+        "validation-runtime"
       ],
       "review": [
         "git-runtime",
-        "node-runtime"
+        "node-runtime",
+        "validation-runtime"
       ]
     },
     "requirements": [
@@ -85,8 +87,39 @@
           "outputRegex": "^v24\\.18\\.0\\r?$"
         },
         "remediation": "Install Node.js 24.18.0, then rerun doctor."
+      },
+      {
+        "id": "validation-runtime",
+        "description": "Exact locked install-script policy and native RE2 runtime required by canonical Renovate validation",
+        "probe": {
+          "run": [
+            "node",
+            "scripts/verify-validation-runtime.mjs"
+          ],
+          "timeoutSeconds": 30,
+          "readOnly": true,
+          "outputStream": "stdout",
+          "outputRegex": "^Renovate validation runtime ready\\r?$"
+        },
+        "remediation": "Run processctl setup for the selected profile with project-files approval after npm ci --ignore-scripts.",
+        "setupAction": "prepare-validation-runtime"
       }
     ],
-    "setupActions": []
+    "setupActions": [
+      {
+        "id": "prepare-validation-runtime",
+        "kind": "command",
+        "run": [
+          "npm",
+          "rebuild",
+          "re2"
+        ],
+        "timeoutSeconds": 300,
+        "mutations": [
+          "project-files"
+        ],
+        "requires": []
+      }
+    ]
   }
 }

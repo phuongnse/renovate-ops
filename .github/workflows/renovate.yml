@@ -192,17 +192,6 @@ jobs:
           RENOVATE_CONSUMER_JSON: ${{ toJSON(matrix) }}
         run: node scripts/discover-consumers.mjs --revalidate
 
-      - name: Finalize verified process adoption pull request
-        if: >-
-          github.event_name == 'repository_dispatch' &&
-          (steps.production_attempt_one.outputs.status == 'passed' ||
-          steps.production_attempt_two.outcome == 'success')
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: >-
-          node scripts/finalize-adoption-prs.mjs
-          "$GITHUB_EVENT_PATH" "$RENOVATE_CONSUMER_MANIFEST"
-
   operations-incident:
     name: Reconcile operations incident
     needs: [discover, renovate]
