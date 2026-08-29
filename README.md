@@ -18,10 +18,9 @@ target and keeps autodiscovery disabled. The consumer checkpoint, config path, a
 config SHA-256 form an ephemeral manifest that is revalidated before and after the
 run and drives exact outcome validation.
 
-Engineering-process authority adoption belongs to the consumer-selected lifecycle
-host. It prepares an unpublished checkpoint, completes project verification and
-independent semantic review, resolves findings, and runs `change finish` before source
-or PR publication. The configured human owner alone merges the resulting PR.
+Engineering-process adoption is materialized by the consumer's exact managed runner
+inside the Renovate branch. The resulting PR runs project verification and requires
+independent semantic review before the configured human owner can merge it.
 
 Each consumer's first complete attempt may receive one idempotent recovery attempt
 after 30 seconds only for `lockfile-error` or a missing completion. The retry keeps
@@ -30,9 +29,9 @@ repository-scoped authorization. Deterministic validation or artifact failures d
 not retry. No static check or Renovate finalizer can satisfy semantic review
 requirements or mark an adoption candidate ready.
 
-Post-upgrade commands, shell execution, arbitrary scripts, plugins, repository
-discovery, and Docker socket access are disabled. The lifecycle host runs the managed
-adoption command outside Renovate under the consumer's process contract.
+Shell execution, arbitrary scripts, plugins, repository discovery, and Docker socket
+access are disabled. The only post-upgrade command allowed by the administrator is
+the anchored managed adoption runner; every other command remains denied.
 
 ## Bootstrap
 
@@ -60,8 +59,8 @@ requires a source change in this repository:
 
 1. In the consumer, merge a strict Renovate config with explicit `"enabled": true`,
    `automerge: false`, and the standard branch prefix. If the repository pins
-   `engineering-process`, its authority rule must be disabled and post-upgrade tasks
-   must be absent because adoption belongs to the lifecycle host.
+   `engineering-process`, its package rule must be enabled without automerge and must
+   contain the exact managed adoption command and file filters.
 2. Verify the consumer's own required CI, semantic review, supplemental policy
    verification, and branch protection.
 3. Grant the GitHub App selected access to that repository.

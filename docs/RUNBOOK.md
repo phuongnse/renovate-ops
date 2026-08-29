@@ -30,12 +30,11 @@ finalizes process adoption.
 
 ## Process adoption ownership
 
-Renovate does not create process-authority branches or PRs. The consumer lifecycle
-host prepares the complete checkpoint, runs required profiles, obtains independent
-semantic review, resolves findings, and records completion before source or PR
-publication. Publication automation may then push `automation/process/*` and create a
-ready PR. Do not edit that completed checkpoint; the configured human owner alone
-merges it.
+Renovate updates the exact package pin and hash lock, runs the single allowlisted
+managed adopter, and commits every declared managed path on
+`automation/renovate/engineering-process*`. The resulting PR remains non-automerge;
+consumer CI verifies the complete materialized checkpoint and an independent reviewer
+must approve it before the configured human owner merges it.
 
 ## Rotate a reusable policy trust root
 
@@ -55,8 +54,9 @@ merges it.
 
 1. In the consumer, merge a strict Renovate config with explicit `enabled: true`,
    `automerge: false`, and branch prefix `automation/renovate/`.
-2. If it adopts `engineering-process`, verify the authority rule is disabled,
-   post-upgrade tasks are absent, and lifecycle-host publication runs adoption checks.
+2. If it adopts `engineering-process`, verify the package rule is enabled without
+   automerge, uses the exact managed adoption command, and includes every managed
+   file filter.
 3. Verify required CI, semantic review, pinned policy verification, and branch protection.
 4. In GitHub App installation settings, grant selected access to the repository.
 5. Dispatch a dry run and verify the reported checkpoint/config digest and proposals.

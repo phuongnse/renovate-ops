@@ -140,18 +140,46 @@ test('policy verifier rejects an event for a different caller repository', async
   assert.match(result.stderr, /event repository does not match the caller/);
 });
 
-test('policy verifier rejects PR-first process adoption configuration', async (context) => {
+test('policy verifier bridge accepts the legacy-disabled adoption state', async () => {
+  const { root, baseSha } = await fixture();
+  const configPath = path.join(root, '.github', 'renovate.json5');
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  config.packageRules = [{
+    automerge: false,
+    enabled: false,
+    matchPackageNames: ['engineering-process', 'phuongnse/engineering-process'],
+  }];
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  await mkdir(path.join(root, 'requirements'), { recursive: true });
+  await writeFile(
+    path.join(root, 'requirements', 'process.in'),
+    'engineering-process==0.4.0\n',
+  );
+  await writeFile(
+    path.join(root, 'requirements', 'process.txt'),
+    `engineering-process==0.4.0 \\\n+    --hash=sha256:${'a'.repeat(64)}\n`,
+  );
+  git(root, 'add', '--', '.github/renovate.json5', 'requirements');
+  git(root, 'commit', '-qm', 'test: preserve legacy adoption state');
+  const headSha = git(root, 'rev-parse', 'HEAD');
+  const eventPath = await eventFile(root, baseSha, headSha);
+  const result = runVerifier(root, eventPath, path.join(root, 'report.json'));
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('policy verifier rejects unsafe process adoption configuration', async (context) => {
   const cases = [
     {
-      name: 'enabled authority rule',
+      name: 'enabled rule without the exact adoption task',
       mutate: (config) => {
         config.packageRules = [{
           automerge: false,
           enabled: true,
+          matchFileNames: ['requirements/process.in', 'requirements/process.txt'],
           matchPackageNames: ['engineering-process'],
         }];
       },
-      expected: /authority rule must be disabled/,
+      expected: /invalid adoption task/,
     },
     {
       name: 'post-upgrade task',
@@ -161,7 +189,7 @@ test('policy verifier rejects PR-first process adoption configuration', async (c
           executionMode: 'branch',
         };
       },
-      expected: /postUpgradeTasks must be absent/,
+      expected: /postUpgradeTasks must be scoped/,
     },
     {
       name: 'missing authority rule for a process consumer',
@@ -175,7 +203,7 @@ test('policy verifier rejects PR-first process adoption configuration', async (c
           'engineering-process==0.4.0\n',
         );
       },
-      expected: /authority rule must be disabled/,
+      expected: /exactly one engineering-process rule is required/,
     },
   ];
   for (const item of cases) {

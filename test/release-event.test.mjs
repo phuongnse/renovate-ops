@@ -8,7 +8,7 @@ function event() {
   return {
     action: 'engineering-process-published',
     client_payload: {
-      attestationDigest: `sha256:${'a'.repeat(64)}`,
+      distributionDigest: `sha256:${'a'.repeat(64)}`,
       package: 'engineering-process',
       repository: 'phuongnse/engineering-process',
       tag: 'v0.2.0',
@@ -35,12 +35,12 @@ test('release event rejects extra payload authority', () => {
   assert.throws(() => validateReleaseEvent(candidate), /unexpected fields/);
 });
 
-test('release event binds tag to version and attestation digest', () => {
+test('release event binds tag to version and distribution digest', () => {
   const wrongTag = event();
   wrongTag.client_payload.tag = 'v0.2.1';
   assert.throws(() => validateReleaseEvent(wrongTag), /tag does not match/);
 
   const wrongDigest = event();
-  wrongDigest.client_payload.attestationDigest = 'sha256:pending';
-  assert.throws(() => validateReleaseEvent(wrongDigest), /attestation digest/);
+  wrongDigest.client_payload.distributionDigest = 'sha256:pending';
+  assert.throws(() => validateReleaseEvent(wrongDigest), /distribution digest/);
 });

@@ -2,6 +2,8 @@ import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
+import { classifyProcessAdoptionRule } from './process-adoption-contract.mjs';
+
 const maximumChangedFiles = 1_000;
 const maximumReviewedBlobBytes = 2_000_000;
 const maximumAggregateBytes = 25_000_000;
@@ -159,7 +161,7 @@ async function assertRenovateContract(root) {
     if (rule.automerge === true) throw new Error(`${loaded.path}: package rule enables automerge`);
   }
   if (config.postUpgradeTasks !== undefined) {
-    throw new Error(`${loaded.path}: postUpgradeTasks must be absent`);
+    throw new Error(`${loaded.path}: postUpgradeTasks must be scoped to the engineering-process rule`);
   }
   const processRules = (config.packageRules ?? []).filter((rule) =>
     rule?.matchPackageNames?.includes('engineering-process')
@@ -171,11 +173,13 @@ async function assertRenovateContract(root) {
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
   }
-  if (
-    (hasProcessPin || processRules.length > 0) &&
-    (processRules.length !== 1 || processRules[0].enabled !== false)
-  ) {
-    throw new Error(`${loaded.path}: engineering-process authority rule must be disabled`);
+  if ((hasProcessPin || processRules.length > 0) && processRules.length !== 1) {
+    throw new Error(`${loaded.path}: exactly one engineering-process rule is required`);
+  }
+  if (processRules.length === 1) {
+    classifyProcessAdoptionRule(
+      processRules[0], `${loaded.path}: engineering-process rule`
+    );
   }
 }
 
@@ -207,8 +211,11 @@ async function assertOperationsBoundary(root, repository) {
   ]) {
     if (!config.includes(required)) throw new Error(`operations config missing ${required}`);
   }
-  if (!config.includes('allowedCommands: []')) {
-    throw new Error('operations command allowlist must be empty');
+  if (
+    !config.includes('allowedCommands: [')
+    || !config.includes("'^python \\\\.process/adopt-process\\\\.py --project-root \\\\. --requirements-lock requirements/process\\\\.txt$'")
+  ) {
+    throw new Error('operations command allowlist must contain only the exact adoption runner');
   }
   if (/mount-docker-socket:\s*true/.test(workflow)) {
     throw new Error('Renovate workflow exposes the Docker socket');
