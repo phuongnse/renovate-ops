@@ -6,10 +6,14 @@ The Mend-hosted Renovate App is not removed during bootstrap.
 
 - The public operations repository is pushed and CI passes.
 - `main` requires the `validate` check, one fresh code-owner approval, conversation resolution, linear history, and applies protection to administrators.
-- The private GitHub App is installed with selected access to every allowlisted repository.
+- Every consumer has merged explicit `enabled: true` intent and owns its required checks.
+- The private GitHub App is installed with selected access to every enabled consumer.
 - Repository variable `RENOVATE_APP_CLIENT_ID` and secret `RENOVATE_APP_PRIVATE_KEY` exist.
-- A manual full dry-run completes successfully for every allowlisted repository.
-- Logs show no post-upgrade command, unexpected write, or repository discovery.
+- A manual full dry-run completes successfully for every discovered consumer.
+- Logs bind each consumer checkpoint/config digest, reject every post-upgrade
+  command, and show no unexpected writes or Renovate autodiscovery.
+- Logs show no post-upgrade command or lifecycle-host authority proposal from
+  Renovate.
 - CI materializes npm with scripts disabled, rebuilds only policy-approved exact
   `re2@1.26.1`, proves its native module, and both canonical validators complete
   without an RE2 fallback warning or error diagnostic.
@@ -17,7 +21,7 @@ The Mend-hosted Renovate App is not removed during bootstrap.
 ## Cutover sequence
 
 1. Record the latest hosted Renovate run and currently open Renovate branches/PRs.
-2. Remove or suspend the Mend-hosted App's access to the four allowlisted repositories. Do not delete its historical PRs.
+2. Remove or suspend the Mend-hosted App's access to each enabled consumer. Do not delete its historical PRs.
 3. Set repository variable `RENOVATE_ENABLED=true` in `renovate-ops`.
 4. Immediately dispatch one self-hosted `production` run.
 5. Confirm the bot identity is the private GitHub App, existing branches are handled without duplicate PRs, and the Dependency Dashboards remain coherent.

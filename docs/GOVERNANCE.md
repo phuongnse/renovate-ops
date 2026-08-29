@@ -2,7 +2,9 @@
 
 ## Authorization model
 
-This repository and its allowlisted consumers declare `single-maintainer` governance. A merge by `phuongnse` is the sole human authorization. The policy does not require a second human approval when no second maintainer exists and does not manufacture independence by changing Git authorship.
+This operations repository and each consumer declare their own governance. A merge
+by `phuongnse` is the sole human authorization while no second maintainer exists; the
+policy does not manufacture independence by changing Git authorship.
 
 Every default-branch change passes three separate control planes:
 
@@ -17,6 +19,10 @@ PR publication already requires the first control plane to have completed. The m
 button becomes eligible only after both GitHub control planes also pass. Adoption and
 release pull requests never automerge.
 
+Consumer membership is never declared here. Each consumer owns explicit Renovate
+intent in its protected config, and GitHub App selected-repository installation is
+the independent platform authorization.
+
 ## Immutable policy verification
 
 Consumers reference `.github/workflows/policy-verification.yml` by a full commit SHA. The called workflow uses GitHub's `job.workflow_repository` and `job.workflow_sha` contexts to check out the verifier implementation co-located with that exact workflow revision. Consumer pull requests cannot select a different verifier after the caller SHA is pinned and protected.
@@ -28,13 +34,10 @@ The verifier:
 - binds evidence to full base and head commit SHAs;
 - reviews bounded regular-file changes and rejects credential-shaped content;
 - requires immutable SHA or digest pins for every workflow action;
-- validates non-automerge Renovate and managed process-adoption contracts;
+- validates non-automerge Renovate and process-adoption contracts;
 - never receives consumer secrets or a write token;
 - emits retained JSON evidence identifying the verifier commit.
 - emits no semantic verdict, lifecycle quality assessment, or lifecycle finding.
-
-`repositories.json` remains scoped only to production Renovate target authorization;
-it does not authorize or constrain callers of the read-only reusable policy workflow.
 
 Changes to the verifier are checked by the previously pinned verifier revision and
 semantically reviewed through the normal pre-PR lifecycle. This creates a forward
@@ -49,7 +52,7 @@ inaccurate RegExp fallback are not accepted evidence.
 
 ## Branch policy
 
-Steady-state default-branch protection requires:
+Each repository owns and applies its own default-branch protection. Steady state requires:
 
 - pull requests with strict, up-to-date required checks;
 - the repository's complete CI surface;
@@ -59,7 +62,9 @@ Steady-state default-branch protection requires:
 - no force pushes, branch deletion, direct pushes, or broad bypass actor;
 - zero required human approvals while only one maintainer exists.
 
-If a second trusted maintainer joins, the governance mode may be changed to `two-person` and one fresh code-owner approval can be added without changing release or adoption automation.
+`renovate-ops` configures only its own branch. It does not keep or apply a central
+map of consumer check names. If a second trusted maintainer joins, a consumer may
+independently change its governance mode and require a fresh code-owner approval.
 
 ## Residual risk
 

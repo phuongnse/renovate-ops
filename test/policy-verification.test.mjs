@@ -6,6 +6,12 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import {
+  ADOPTION_ALLOWED_COMMAND,
+  ADOPTION_COMMAND,
+  ADOPTION_FILE_FILTERS,
+} from '../scripts/process-adoption-contract.mjs';
+
 const verifier = fileURLToPath(new URL('../scripts/policy-verification.mjs', import.meta.url));
 const checkoutSha = '3d3c42e5aac5ba805825da76410c181273ba90b1';
 
@@ -48,12 +54,17 @@ async function fixture() {
   return { root, baseSha, headSha };
 }
 
-async function eventFile(root, baseSha, headSha) {
+async function eventFile(
+  root,
+  baseSha,
+  headSha,
+  repository = 'phuongnse/axis-reference-product',
+) {
   const eventPath = path.join(root, 'event.json');
   await writeFile(
     eventPath,
     `${JSON.stringify({
-      repository: { full_name: 'phuongnse/axis-reference-product' },
+      repository: { full_name: repository },
       pull_request: {
         number: 7,
         base: { ref: 'main', sha: baseSha },
@@ -64,7 +75,12 @@ async function eventFile(root, baseSha, headSha) {
   return eventPath;
 }
 
-function runVerifier(root, eventPath, outputPath) {
+function runVerifier(
+  root,
+  eventPath,
+  outputPath,
+  repository = 'phuongnse/axis-reference-product',
+) {
   return spawnSync(
     process.execPath,
     [
@@ -81,11 +97,56 @@ function runVerifier(root, eventPath, outputPath) {
       env: {
         ...process.env,
         GITHUB_EVENT_PATH: path.join(root, 'ignored-default-event.json'),
-        GITHUB_REPOSITORY: 'phuongnse/axis-reference-product',
+        GITHUB_REPOSITORY: repository,
         TRUSTED_WORKFLOW_REPOSITORY: 'phuongnse/renovate-ops',
         TRUSTED_WORKFLOW_SHA: 'a'.repeat(40),
       },
     },
+  );
+}
+
+async function prepareOperationsConsumer(root, adoptionState, allowlistState) {
+  const configPath = path.join(root, '.github', 'renovate.json5');
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  config.packageRules = adoptionState === 'active'
+    ? [{
+        automerge: false,
+        enabled: true,
+        matchFileNames: ['requirements/process.in', 'requirements/process.txt'],
+        matchPackageNames: ['engineering-process'],
+        postUpgradeTasks: {
+          commands: [ADOPTION_COMMAND],
+          executionMode: 'update',
+          fileFilters: ADOPTION_FILE_FILTERS,
+          installTools: { python: {} },
+        },
+      }]
+    : [{
+        automerge: false,
+        enabled: false,
+        matchPackageNames: ['engineering-process', 'phuongnse/engineering-process'],
+      }];
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  await mkdir(path.join(root, 'requirements'), { recursive: true });
+  await writeFile(
+    path.join(root, 'requirements', 'process.in'),
+    'engineering-process==0.4.0\n',
+  );
+  await writeFile(
+    path.join(root, 'requirements', 'process.txt'),
+    `engineering-process==0.4.0 \\\n    --hash=sha256:${'a'.repeat(64)}\n`,
+  );
+  const rawCommand = ADOPTION_ALLOWED_COMMAND.replaceAll('\\', '\\\\');
+  const allowedCommands = allowlistState === 'active'
+    ? `[\n    '${rawCommand}',\n  ]`
+    : '[]';
+  await writeFile(
+    path.join(root, 'config.cjs'),
+    `'use strict';\nmodule.exports = {\n  autodiscover: false,\n  allowScripts: false,\n  allowPlugins: false,\n  allowShellExecutorForPostUpgradeCommands: false,\n  allowedCommands: ${allowedCommands},\n};\n`,
+  );
+  await writeFile(
+    path.join(root, '.github', 'workflows', 'renovate.yml'),
+    'name: Renovate\non: workflow_dispatch\n',
   );
 }
 
@@ -140,18 +201,95 @@ test('policy verifier rejects an event for a different caller repository', async
   assert.match(result.stderr, /event repository does not match the caller/);
 });
 
-test('policy verifier rejects PR-first process adoption configuration', async (context) => {
+test('operations verifier accepts the legacy-disabled bridge state', async () => {
+  const { root, baseSha } = await fixture();
+  const configPath = path.join(root, '.github', 'renovate.json5');
+  const config = JSON.parse(await readFile(configPath, 'utf8'));
+  config.packageRules = [{
+    automerge: false,
+    enabled: false,
+    matchPackageNames: ['engineering-process', 'phuongnse/engineering-process'],
+  }];
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  await mkdir(path.join(root, 'requirements'), { recursive: true });
+  await writeFile(
+    path.join(root, 'requirements', 'process.in'),
+    'engineering-process==0.4.0\n',
+  );
+  await writeFile(
+    path.join(root, 'requirements', 'process.txt'),
+    `engineering-process==0.4.0 \\\n    --hash=sha256:${'a'.repeat(64)}\n`,
+  );
+  await prepareOperationsConsumer(root, 'legacy-disabled', 'legacy-disabled');
+  git(root, 'add', '--', '.github', 'config.cjs', 'requirements');
+  git(root, 'commit', '-qm', 'test: preserve legacy adoption state');
+  const headSha = git(root, 'rev-parse', 'HEAD');
+  const repository = 'phuongnse/renovate-ops';
+  const eventPath = await eventFile(root, baseSha, headSha, repository);
+  const result = runVerifier(
+    root,
+    eventPath,
+    path.join(root, 'report.json'),
+    repository,
+  );
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('operations verifier accepts the correlated active adoption state', async () => {
+  const { root, baseSha } = await fixture();
+  await prepareOperationsConsumer(root, 'active', 'active');
+  git(root, 'add', '--', '.github', 'config.cjs', 'requirements');
+  git(root, 'commit', '-qm', 'test: active operations adoption');
+  const headSha = git(root, 'rev-parse', 'HEAD');
+  const repository = 'phuongnse/renovate-ops';
+  const eventPath = await eventFile(root, baseSha, headSha, repository);
+  const result = runVerifier(
+    root,
+    eventPath,
+    path.join(root, 'report.json'),
+    repository,
+  );
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('operations verifier rejects adoption and allowlist state mismatches', async (context) => {
+  for (const [adoptionState, allowlistState] of [
+    ['legacy-disabled', 'active'],
+    ['active', 'legacy-disabled'],
+  ]) {
+    await context.test(`${adoptionState} with ${allowlistState} allowlist`, async () => {
+      const { root, baseSha } = await fixture();
+      await prepareOperationsConsumer(root, adoptionState, allowlistState);
+      git(root, 'add', '--', '.github', 'config.cjs', 'requirements');
+      git(root, 'commit', '-qm', 'test: mismatched operations adoption');
+      const headSha = git(root, 'rev-parse', 'HEAD');
+      const repository = 'phuongnse/renovate-ops';
+      const eventPath = await eventFile(root, baseSha, headSha, repository);
+      const result = runVerifier(
+        root,
+        eventPath,
+        path.join(root, 'report.json'),
+        repository,
+      );
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /process adoption requires/);
+    });
+  }
+});
+
+test('policy verifier rejects unsafe process adoption configuration', async (context) => {
   const cases = [
     {
-      name: 'enabled authority rule',
+      name: 'enabled rule without the exact adoption task',
       mutate: (config) => {
         config.packageRules = [{
           automerge: false,
           enabled: true,
+          matchFileNames: ['requirements/process.in', 'requirements/process.txt'],
           matchPackageNames: ['engineering-process'],
         }];
       },
-      expected: /authority rule must be disabled/,
+      expected: /invalid adoption task/,
     },
     {
       name: 'post-upgrade task',
@@ -161,7 +299,7 @@ test('policy verifier rejects PR-first process adoption configuration', async (c
           executionMode: 'branch',
         };
       },
-      expected: /postUpgradeTasks must be absent/,
+      expected: /postUpgradeTasks must be scoped/,
     },
     {
       name: 'missing authority rule for a process consumer',
@@ -175,7 +313,7 @@ test('policy verifier rejects PR-first process adoption configuration', async (c
           'engineering-process==0.4.0\n',
         );
       },
-      expected: /authority rule must be disabled/,
+      expected: /exactly one engineering-process rule is required/,
     },
   ];
   for (const item of cases) {

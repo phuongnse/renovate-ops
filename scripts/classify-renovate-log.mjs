@@ -2,7 +2,7 @@ import { appendFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import {
   readBoundedRenovateRecords,
-  readRenovateRepositories,
+  readExpectedRepositories,
   RenovateOutcomeError,
   validateRenovateRecords,
 } from './validate-renovate-log.mjs';
@@ -27,13 +27,13 @@ export function classifyRenovateRecords(records, repositories) {
 
 async function main() {
   if (process.argv.length !== 4) {
-    throw new Error('usage: classify-renovate-log.mjs LOG_PATH REPOSITORIES_PATH');
+    throw new Error('usage: classify-renovate-log.mjs LOG_PATH CONSUMER_MANIFEST');
   }
   const output = process.env.GITHUB_OUTPUT;
   if (!output) throw new Error('GITHUB_OUTPUT is required');
   const result = classifyRenovateRecords(
     await readBoundedRenovateRecords(process.argv[2]),
-    await readRenovateRepositories(process.argv[3]),
+    await readExpectedRepositories(process.argv[3]),
   );
   await appendFile(
     output,

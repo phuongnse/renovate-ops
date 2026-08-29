@@ -18,7 +18,7 @@ function completions(result = 'done') {
   }));
 }
 
-test('Renovate outcomes require every allowlisted repository to finish cleanly', () => {
+test('Renovate outcomes require every manifest consumer to finish cleanly', () => {
   assert.deepEqual(validateRenovateRecords(completions(), repositories), {
     repositories: [...repositories].sort(),
     status: 'passed',

@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
+import { readConsumerManifest } from './validate-consumer-manifest.mjs';
+
 const MAX_LOG_BYTES = 20_000_000;
 const MAX_LOG_LINES = 100_000;
 const MAX_DIAGNOSTIC_BYTES = 4_096;
@@ -128,23 +130,16 @@ export async function readBoundedRenovateRecords(path) {
 
 async function main() {
   if (process.argv.length !== 4) {
-    throw new Error('usage: validate-renovate-log.mjs LOG_PATH REPOSITORIES_PATH');
+    throw new Error('usage: validate-renovate-log.mjs LOG_PATH CONSUMER_MANIFEST');
   }
   const records = await readBoundedRenovateRecords(process.argv[2]);
-  const repositories = await readRenovateRepositories(process.argv[3]);
+  const repositories = await readExpectedRepositories(process.argv[3]);
   process.stdout.write(`${JSON.stringify(validateRenovateRecords(records, repositories))}\n`);
 }
 
-export async function readRenovateRepositories(path) {
-  const repositories = JSON.parse(await readFile(path, 'utf8'));
-  if (
-    !Array.isArray(repositories)
-    || repositories.length === 0
-    || repositories.some((repository) => typeof repository !== 'string')
-  ) {
-    throw new Error('repository allowlist must be a non-empty string array');
-  }
-  return repositories;
+export async function readExpectedRepositories(path) {
+  const manifest = await readConsumerManifest(path);
+  return manifest.consumers.map((consumer) => consumer.repository);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
