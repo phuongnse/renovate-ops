@@ -15,7 +15,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    uses: phuongnse/renovate-ops/.github/workflows/policy-verification.yml@a8bd528634b299dda428863f41784ad4f962afd7
+    uses: phuongnse/renovate-ops/.github/workflows/policy-verification.yml@1e3d0d333b62ec92c94ea5c355bbb0cd73024b78
 
   validate:
     runs-on: ubuntu-24.04
