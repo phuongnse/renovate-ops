@@ -1,6 +1,9 @@
 export const ADOPTION_COMMAND =
   'python .process/adopt-process.py --project-root . --requirements-lock requirements/process.txt';
 
+export const ADOPTION_ALLOWED_COMMAND =
+  String.raw`^python \.process/adopt-process\.py --project-root \. --requirements-lock requirements/process\.txt$`;
+
 export const ADOPTION_FILE_FILTERS = Object.freeze([
   '.agents/skills/**',
   '.github/PULL_REQUEST_TEMPLATE.md',
