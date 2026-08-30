@@ -23,11 +23,13 @@ inside the Renovate branch. The resulting PR runs project verification and requi
 independent semantic review before the configured human owner can merge it.
 
 Each consumer's first complete attempt may receive one idempotent recovery attempt
-after 30 seconds only for `lockfile-error` or a missing completion. The retry keeps
-the same authenticated event, consumer manifest, immutable runtime, and
-repository-scoped authorization. Deterministic validation or artifact failures do
-not retry. No static check or Renovate finalizer can satisfy semantic review
-requirements or mark an adoption candidate ready.
+after one fixed five-minute registry-propagation window only for `lockfile-error`, a
+missing completion, or an exact engineering-process version that the package index
+has not exposed yet. The retry keeps the same authenticated event, consumer manifest,
+immutable runtime, and repository-scoped authorization. Every other deterministic
+validation or artifact failure stops immediately. No static check or Renovate
+finalizer can satisfy semantic review requirements or mark an adoption candidate
+ready.
 
 Shell execution, arbitrary scripts, plugins, repository discovery, and Docker socket
 access are disabled. The only post-upgrade command allowed by the administrator is

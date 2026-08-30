@@ -22,11 +22,12 @@ RE2 fallback diagnostic as deterministic failure. Never use
 `RENOVATE_X_IGNORE_RE2`, broaden script approval, or substitute another validator.
 
 Each production attempt has a separate bounded NDJSON log. The first complete result
-is classified. `lockfile-error` and missing-completion outcomes wait 30 seconds and
+is classified. `lockfile-error`, missing-completion, and exact engineering-process
+registry-visibility outcomes wait one fixed five-minute propagation window and
 receive exactly one idempotent retry; malformed logs, unexpected or duplicate
-repositories, config races, non-lockfile results, and non-retryable artifact failures
-stop immediately. A second failure opens or updates the incident. Renovate never
-finalizes process adoption.
+repositories, config races, other repository results, and non-retryable artifact
+failures stop immediately. A second failure opens or updates the incident. Renovate
+never finalizes process adoption.
 
 ## Process adoption ownership
 
