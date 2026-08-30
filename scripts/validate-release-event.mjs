@@ -2,7 +2,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 const MAX_EVENT_BYTES = 1_000_000;
-const PAYLOAD_KEYS = ['attestationDigest', 'package', 'repository', 'tag', 'version'];
+const PAYLOAD_KEYS = ['distributionDigest', 'package', 'repository', 'tag', 'version'];
 const VERSION_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
@@ -39,10 +39,10 @@ export function validateReleaseEvent(document) {
     throw new Error('release event tag does not match its version');
   }
   if (
-    typeof payload.attestationDigest !== 'string'
-    || !DIGEST_PATTERN.test(payload.attestationDigest)
+    typeof payload.distributionDigest !== 'string'
+    || !DIGEST_PATTERN.test(payload.distributionDigest)
   ) {
-    throw new Error('release event has an invalid attestation digest');
+    throw new Error('release event has an invalid distribution digest');
   }
   return payload;
 }

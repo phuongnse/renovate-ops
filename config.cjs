@@ -18,6 +18,8 @@ module.exports = {
   allowScripts: false,
   allowPlugins: false,
   allowShellExecutorForPostUpgradeCommands: false,
-  allowedCommands: [],
+  allowedCommands: [
+    '^python \\.process/adopt-process\\.py --project-root \\. --requirements-lock requirements/process\\.txt$',
+  ],
   useCloudMetadataServices: false,
 };

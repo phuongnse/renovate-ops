@@ -92,21 +92,26 @@ test('global configuration requires one workflow-supplied target', () => {
   assert.match(invalid.stderr, /one exact trusted repository/);
 });
 
-test('no Renovate post-upgrade command can impersonate process adoption', () => {
+test('only the exact non-shell process adoption command is allowed', () => {
   assert.equal(config.allowScripts, false);
   assert.equal(config.allowPlugins, false);
   assert.equal(config.allowShellExecutorForPostUpgradeCommands, false);
-  assert.deepEqual(config.allowedCommands, []);
+  assert.deepEqual(config.allowedCommands, [
+    '^python \\.process/adopt-process\\.py --project-root \\. --requirements-lock requirements/process\\.txt$',
+  ]);
   assert.equal(renovateConfig.enabled, true);
   assert.equal(Object.hasOwn(renovateConfig, 'postUpgradeTasks'), false);
   const authorityRule = renovateConfig.packageRules.find((rule) =>
     rule.matchPackageNames?.includes('engineering-process')
   );
   assert.ok(authorityRule);
-  assert.equal(authorityRule.enabled, false);
+  assert.equal(authorityRule.enabled, true);
   assert.equal(authorityRule.automerge, false);
-  assert.match(ciWorkflow, /automation\/process\/engineering-process/);
-  assert.doesNotMatch(ciWorkflow, /automation\/renovate\/engineering-process/);
+  assert.deepEqual(authorityRule.postUpgradeTasks.commands, [
+    'python .process/adopt-process.py --project-root . --requirements-lock requirements/process.txt',
+  ]);
+  assert.equal(authorityRule.postUpgradeTasks.executionMode, 'update');
+  assert.match(ciWorkflow, /automation\/renovate\/engineering-process/);
 });
 
 test('workflow separates read-only discovery from repository-scoped writers', () => {
@@ -141,10 +146,10 @@ test('production Renovate is activated by a bounded authenticated release event'
   assert.match(workflow, /token: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
 });
 
-test('process adoption publication belongs to the lifecycle host', () => {
+test('process adoption is materialized before independent merge review', () => {
   for (const document of [readme, runbook]) {
-    assert.match(document, /lifecycle\s+host/i);
-    assert.match(document, /before source\s+or PR\s+publication/i);
+    assert.match(document, /managed adoption command/i);
+    assert.match(document, /without automerge|before.*merge/is);
     assert.doesNotMatch(document, /bot-owned/i);
   }
 });
