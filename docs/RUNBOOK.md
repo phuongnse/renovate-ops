@@ -33,7 +33,7 @@ never finalizes process adoption.
 
 Renovate updates the exact package pin and hash lock, runs the single allowlisted
 managed adopter, and commits every declared managed path on
-`automation/renovate/engineering-process*`. The resulting PR remains non-automerge;
+`automation/renovate/engineering-process*`. The resulting PR remains a draft;
 consumer CI verifies the complete materialized checkpoint and an independent reviewer
 must approve it before the configured human owner merges it.
 
@@ -54,10 +54,10 @@ must approve it before the configured human owner merges it.
 ## Add a consumer
 
 1. In the consumer, merge a strict Renovate config with explicit `enabled: true`,
-   `automerge: false`, and branch prefix `automation/renovate/`.
-2. If it adopts `engineering-process`, verify the package rule is enabled without
-   automerge, uses the exact managed adoption command, and includes every managed
-   file filter.
+   `draftPR: true`, and branch prefix `automation/renovate/`.
+2. If it adopts `engineering-process`, verify the package rule also sets
+   `draftPR: true`, uses the exact managed adoption command, and includes every
+   managed file filter.
 3. Verify required CI, semantic review, pinned policy verification, and branch protection.
 4. In GitHub App installation settings, grant selected access to the repository.
 5. Dispatch a dry run and verify the reported checkpoint/config digest and proposals.

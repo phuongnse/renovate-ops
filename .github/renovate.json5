@@ -6,7 +6,6 @@
   ],
   "enabled": true,
   "configMigration": true,
-  "automerge": false,
   "branchPrefix": "automation/renovate/",
   "dependencyDashboard": true,
   "draftPR": true,
@@ -50,7 +49,7 @@
         "engineering-process"
       ],
       "enabled": true,
-      "automerge": false,
+      "draftPR": true,
       "groupName": "engineering-process",
       "groupSlug": "engineering-process",
       "schedule": [
@@ -86,7 +85,6 @@
         "renovatebot/github-action"
       ],
       "groupName": "Renovate runtime",
-      "automerge": false,
       "prPriority": 100
     }
   ]

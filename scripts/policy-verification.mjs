@@ -156,12 +156,9 @@ async function assertRenovateContract(root) {
   ]);
   if (!loaded) throw new Error('repository must declare a Renovate configuration');
   const config = loaded.value;
-  if (config.automerge !== false) throw new Error(`${loaded.path}: automerge must be false`);
+  if (config.draftPR !== true) throw new Error(`${loaded.path}: draftPR must be true`);
   if (config.branchPrefix !== 'automation/renovate/') {
     throw new Error(`${loaded.path}: unexpected branchPrefix`);
-  }
-  for (const rule of config.packageRules ?? []) {
-    if (rule.automerge === true) throw new Error(`${loaded.path}: package rule enables automerge`);
   }
   if (config.postUpgradeTasks !== undefined) {
     throw new Error(`${loaded.path}: postUpgradeTasks must be scoped to the engineering-process rule`);

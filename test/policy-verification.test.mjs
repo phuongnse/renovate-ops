@@ -30,10 +30,9 @@ async function fixture() {
     path.join(root, '.github', 'renovate.json5'),
     `${JSON.stringify(
       {
-        automerge: false,
         branchPrefix: 'automation/renovate/',
-        draftPR: false,
-        packageRules: [{ automerge: false }],
+        draftPR: true,
+        packageRules: [{}],
       },
       null,
       2,
@@ -110,8 +109,8 @@ async function prepareOperationsConsumer(root, adoptionState, allowlistState) {
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   config.packageRules = adoptionState === 'active'
     ? [{
-        automerge: false,
         enabled: true,
+        draftPR: true,
         matchFileNames: ['requirements/process.in', 'requirements/process.txt'],
         matchPackageNames: ['engineering-process'],
         postUpgradeTasks: {
@@ -122,8 +121,8 @@ async function prepareOperationsConsumer(root, adoptionState, allowlistState) {
         },
       }]
     : [{
-        automerge: false,
         enabled: false,
+        draftPR: true,
         matchPackageNames: ['engineering-process', 'phuongnse/engineering-process'],
       }];
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
@@ -206,8 +205,8 @@ test('operations verifier accepts the legacy-disabled bridge state', async () =>
   const configPath = path.join(root, '.github', 'renovate.json5');
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   config.packageRules = [{
-    automerge: false,
     enabled: false,
+    draftPR: true,
     matchPackageNames: ['engineering-process', 'phuongnse/engineering-process'],
   }];
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
@@ -283,13 +282,45 @@ test('policy verifier rejects unsafe process adoption configuration', async (con
       name: 'enabled rule without the exact adoption task',
       mutate: (config) => {
         config.packageRules = [{
-          automerge: false,
           enabled: true,
+          draftPR: true,
           matchFileNames: ['requirements/process.in', 'requirements/process.txt'],
           matchPackageNames: ['engineering-process'],
         }];
       },
       expected: /invalid adoption task/,
+    },
+    {
+      name: 'ready global pull requests',
+      mutate: (config) => {
+        config.draftPR = false;
+      },
+      expected: /draftPR must be true/,
+    },
+    {
+      name: 'ready process-adoption pull requests',
+      mutate: (config) => {
+        config.packageRules = [{
+          draftPR: false,
+          enabled: true,
+          matchFileNames: ['requirements/process.in', 'requirements/process.txt'],
+          matchPackageNames: ['engineering-process'],
+          postUpgradeTasks: {
+            commands: [ADOPTION_COMMAND],
+            executionMode: 'update',
+            fileFilters: ADOPTION_FILE_FILTERS,
+            installTools: { python: {} },
+          },
+        }];
+      },
+      prepare: async (root) => {
+        await mkdir(path.join(root, 'requirements'), { recursive: true });
+        await writeFile(
+          path.join(root, 'requirements', 'process.in'),
+          'engineering-process==0.4.0\n',
+        );
+      },
+      expected: /must keep the adoption pull request in draft/,
     },
     {
       name: 'post-upgrade task',
@@ -304,7 +335,7 @@ test('policy verifier rejects unsafe process adoption configuration', async (con
     {
       name: 'missing authority rule for a process consumer',
       mutate: (config) => {
-        config.packageRules = [{ automerge: false }];
+        config.packageRules = [{}];
       },
       prepare: async (root) => {
         await mkdir(path.join(root, 'requirements'), { recursive: true });

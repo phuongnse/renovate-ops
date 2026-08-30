@@ -26,8 +26,8 @@ export function classifyProcessAdoptionRule(rule, label = 'engineering-process r
   if (rule === null || typeof rule !== 'object' || Array.isArray(rule)) {
     throw new Error(`${label} must be an object`);
   }
-  if (rule.automerge !== false) {
-    throw new Error(`${label} must disable automerge`);
+  if (rule.draftPR !== true) {
+    throw new Error(`${label} must keep the adoption pull request in draft`);
   }
   if (rule.enabled === false) {
     if (Object.hasOwn(rule, 'postUpgradeTasks')) {

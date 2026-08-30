@@ -96,13 +96,14 @@ test('only the exact non-shell process adoption command is allowed', () => {
     '^python \\.process/adopt-process\\.py --project-root \\. --requirements-lock requirements/process\\.txt$',
   ]);
   assert.equal(renovateConfig.enabled, true);
+  assert.equal(renovateConfig.draftPR, true);
   assert.equal(Object.hasOwn(renovateConfig, 'postUpgradeTasks'), false);
   const authorityRule = renovateConfig.packageRules.find((rule) =>
     rule.matchPackageNames?.includes('engineering-process')
   );
   assert.ok(authorityRule);
   assert.equal(authorityRule.enabled, true);
-  assert.equal(authorityRule.automerge, false);
+  assert.equal(authorityRule.draftPR, true);
   assert.deepEqual(authorityRule.postUpgradeTasks.commands, [
     'python .process/adopt-process.py --project-root . --requirements-lock requirements/process.txt',
   ]);
@@ -145,7 +146,7 @@ test('production Renovate is activated by a bounded authenticated release event'
 test('process adoption is materialized before independent merge review', () => {
   for (const document of [readme, runbook]) {
     assert.match(document, /managed adoption command/i);
-    assert.match(document, /without automerge|before.*merge/is);
+    assert.match(document, /draft.*before.*merge/is);
     assert.doesNotMatch(document, /bot-owned/i);
   }
 });

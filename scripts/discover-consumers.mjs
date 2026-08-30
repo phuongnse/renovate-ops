@@ -114,18 +114,12 @@ export function classifyConsumerIntent(config, label = 'consumer config') {
   if (!Object.hasOwn(config, 'enabled')) return 'absent';
   if (typeof config.enabled !== 'boolean') throw new Error(`${label}.enabled must be boolean`);
   if (!config.enabled) return 'disabled';
-  if (config.automerge !== false) throw new Error(`${label}.automerge must be false`);
-  if (Object.hasOwn(config, 'draftPR') && typeof config.draftPR !== 'boolean') {
-    throw new Error(`${label}.draftPR must be boolean when present`);
-  }
+  if (config.draftPR !== true) throw new Error(`${label}.draftPR must be true`);
   if (config.branchPrefix !== 'automation/renovate/') {
     throw new Error(`${label}.branchPrefix is invalid`);
   }
   if (Object.hasOwn(config, 'packageRules') && !Array.isArray(config.packageRules)) {
     throw new Error(`${label}.packageRules must be an array`);
-  }
-  if (config.packageRules?.some((rule) => rule?.automerge === true)) {
-    throw new Error(`${label} enables package-rule automerge`);
   }
   if (Object.hasOwn(config, 'postUpgradeTasks')) {
     throw new Error(`${label}.postUpgradeTasks must be scoped to the engineering-process rule`);
