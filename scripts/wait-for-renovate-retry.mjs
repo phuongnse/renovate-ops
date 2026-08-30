@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
-export const RENOVATE_RETRY_DELAY_MS = 30_000;
+export const RENOVATE_RETRY_DELAY_MS = 300_000;
 
 export async function waitForRenovateRetry({
   delayMs = RENOVATE_RETRY_DELAY_MS,

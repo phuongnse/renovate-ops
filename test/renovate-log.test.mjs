@@ -104,7 +104,7 @@ test('retry wait is fixed, bounded, and injectable without sleeping', async () =
     sleepFunction: async (delayMs) => calls.push(delayMs),
   });
 
-  assert.deepEqual(calls, [30_000]);
-  assert.deepEqual(result, { delayMs: 30_000, status: 'completed' });
-  await assert.rejects(() => waitForRenovateRetry({ delayMs: 30_001 }), /between 1 and 30000/);
+  assert.deepEqual(calls, [300_000]);
+  assert.deepEqual(result, { delayMs: 300_000, status: 'completed' });
+  await assert.rejects(() => waitForRenovateRetry({ delayMs: 300_001 }), /between 1 and 300000/);
 });
