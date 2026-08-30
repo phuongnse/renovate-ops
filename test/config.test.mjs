@@ -41,17 +41,13 @@ test('validation dependency scripts are exact, denied by default, and setup-owne
     're2@1.26.1': true,
   });
   assert.equal(npmConfig, 'strict-allow-scripts=true\n');
-  const requirement = processManifest.environment.requirements.find(
-    ({ id }) => id === 'validation-runtime',
-  );
-  assert.ok(requirement);
-  assert.deepEqual(requirement.probe.run, ['node', 'scripts/verify-validation-runtime.mjs']);
-  assert.equal(requirement.setupAction, 'prepare-validation-runtime');
-  const action = processManifest.environment.setupActions.find(
+  assert.equal(processManifest.schemaVersion, 5);
+  assert.equal(Object.hasOwn(processManifest, 'environment'), false);
+  const action = processManifest.setup.find(
     ({ id }) => id === 'prepare-validation-runtime',
   );
   assert.deepEqual(action.run, ['npm', 'rebuild', 're2']);
-  assert.deepEqual(action.mutations, ['project-files']);
+  assert.equal(action.timeoutSeconds, 300);
   assert.match(validationRuntime, /node_modules\/re2\/build\/Release\/re2\.node/);
   assert.doesNotMatch(validationRuntime, /RENOVATE_X_IGNORE_RE2/);
 
