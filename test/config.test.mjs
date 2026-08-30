@@ -224,11 +224,11 @@ test('policy verification resolves verifier code from the exact Stage A main SHA
   assert.doesNotMatch(policyWorkflow, /pull_request_target|secrets:\s*inherit/);
   assert.match(
     ciWorkflow,
-    /uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@1e3d0d333b62ec92c94ea5c355bbb0cd73024b78/,
+    /uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@5fb53c2295c0f62c29d34c8141121b71198769f4/,
   );
   assert.match(
     ciWorkflow,
-    /policy-verification:\n    name: policy-verification\n    if: github\.event_name == 'pull_request'\n    permissions:\n      contents: read\n      pull-requests: read\n    uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@1e3d0d333b62ec92c94ea5c355bbb0cd73024b78/,
+    /policy-verification:\n    name: policy-verification\n    if: github\.event_name == 'pull_request'\n    permissions:\n      contents: read\n      pull-requests: read\n    uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@5fb53c2295c0f62c29d34c8141121b71198769f4/,
   );
   assert.doesNotMatch(ciWorkflow, /pull-requests: write/);
   assert.doesNotMatch(ciWorkflow, /secrets:\s*inherit/);
