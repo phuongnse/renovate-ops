@@ -2,6 +2,6 @@
   "digest": "sha256:f920dc2b718b1f0ab2c31fd9dbb7d67588ce6dffd34cc28349148bb481447e8a",
   "distribution": "engineering-process",
   "schemaVersion": 1,
-  "skill": "review-change",
+  "skill": "publish-change",
   "version": "0.9.0"
 }
