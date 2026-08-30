@@ -16,19 +16,28 @@ const expected = {
   'target-selection-integrity': ['development'],
 };
 
-test('operations readiness declaration is exact and forward compatible', () => {
+const expectedCapabilities = Object.fromEntries(
+  Object.entries(expected).map(([id, evidenceProfiles]) => [
+    id,
+    { state: 'enforced', evidenceProfiles },
+  ]),
+);
+
+test('operations readiness declaration is exact, versioned, and forward compatible', () => {
   assert.equal(Object.hasOwn(project, 'readiness'), false);
-  assert.deepEqual(Object.keys(readiness).sort(), ['capabilities', 'packs', 'target']);
+  assert.deepEqual(Object.keys(readiness).sort(), ['capabilities', 'packs', 'stage', 'target']);
   assert.equal(readiness.target, 'production');
-  assert.deepEqual(readiness.packs, ['operations']);
+  assert.equal(readiness.stage, 'production');
+  assert.deepEqual(readiness.packs, [{ id: 'operations', version: 1 }]);
   assert.equal(new Set(readiness.capabilities.map(({ id }) => id)).size, readiness.capabilities.length);
   assert.deepEqual(
-    Object.fromEntries(readiness.capabilities.map(({ id, evidenceProfiles }) => [id, evidenceProfiles])),
-    expected,
+    Object.fromEntries(readiness.capabilities.map(({ id, ...capability }) => [id, capability])),
+    expectedCapabilities,
   );
 });
 
 test('every operations capability resolves only to required profile checks', () => {
+  assert.deepEqual(project.lifecycle.requiredProfiles, ['development', 'review']);
   const required = new Set(project.lifecycle.requiredProfiles);
   const checks = Object.fromEntries(
     Object.entries(project.profiles).map(([profile, entries]) => [

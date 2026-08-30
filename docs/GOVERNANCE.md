@@ -68,7 +68,8 @@ independently change its governance mode and require a fresh code-owner approval
 
 ## Production readiness
 
-`.process/readiness.json` selects the `operations` capability pack. Its evidence is
+`.process/readiness.json` selects immutable pack `operations@1` at production stage.
+Its evidence is
 consumer-owned and resolves only through the required development and review profiles:
 
 | Capability | Existing control evidence |
@@ -87,6 +88,11 @@ authority validates the new pack. A consumer-owned Node test enforces the exact
 mapping during that bootstrap. The pack certifies this dependency-automation control
 plane boundary; it does not claim application deployment, service SLO, or product
 runtime coverage.
+
+Process adoption never upgrades the selected pack version. A later `operations@2`
+may be offered by a new process release while this repository continues to validate
+against `operations@1`; moving standards is a separate owner-authorized readiness
+change. This prevents a new pack requirement from deadlocking authority adoption.
 
 ## Residual risk
 

@@ -1,29 +1,37 @@
 {
   "target": "production",
+  "stage": "production",
   "packs": [
-    "operations"
+    {
+      "id": "operations",
+      "version": 1
+    }
   ],
   "capabilities": [
     {
       "id": "auditability",
+      "state": "enforced",
       "evidenceProfiles": [
         "development"
       ]
     },
     {
       "id": "automation-correctness",
+      "state": "enforced",
       "evidenceProfiles": [
         "development"
       ]
     },
     {
       "id": "bounded-execution",
+      "state": "enforced",
       "evidenceProfiles": [
         "development"
       ]
     },
     {
       "id": "least-privilege",
+      "state": "enforced",
       "evidenceProfiles": [
         "development",
         "review"
@@ -31,6 +39,7 @@
     },
     {
       "id": "policy-integrity",
+      "state": "enforced",
       "evidenceProfiles": [
         "development",
         "review"
@@ -38,12 +47,14 @@
     },
     {
       "id": "recovery",
+      "state": "enforced",
       "evidenceProfiles": [
         "development"
       ]
     },
     {
       "id": "target-selection-integrity",
+      "state": "enforced",
       "evidenceProfiles": [
         "development"
       ]
