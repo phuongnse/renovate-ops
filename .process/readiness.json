@@ -1,0 +1,52 @@
+{
+  "target": "production",
+  "packs": [
+    "operations"
+  ],
+  "capabilities": [
+    {
+      "id": "auditability",
+      "evidenceProfiles": [
+        "development"
+      ]
+    },
+    {
+      "id": "automation-correctness",
+      "evidenceProfiles": [
+        "development"
+      ]
+    },
+    {
+      "id": "bounded-execution",
+      "evidenceProfiles": [
+        "development"
+      ]
+    },
+    {
+      "id": "least-privilege",
+      "evidenceProfiles": [
+        "development",
+        "review"
+      ]
+    },
+    {
+      "id": "policy-integrity",
+      "evidenceProfiles": [
+        "development",
+        "review"
+      ]
+    },
+    {
+      "id": "recovery",
+      "evidenceProfiles": [
+        "development"
+      ]
+    },
+    {
+      "id": "target-selection-integrity",
+      "evidenceProfiles": [
+        "development"
+      ]
+    }
+  ]
+}
