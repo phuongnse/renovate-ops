@@ -8,16 +8,15 @@ policy does not manufacture independence by changing Git authorship.
 
 Every default-branch change passes three separate control planes:
 
-1. Before PR publication, the engineering-process lifecycle requires a host-selected
-   independent agent or human to semantically review the exact verified checkpoint.
+1. Before merge, the engineering-process lifecycle requires an independent agent or
+   human to semantically review the exact verified checkpoint.
 2. Repository-owned build, test, and contract checks verify project behavior.
 3. The immutable reusable workflow in this repository publishes a
    `policy-verification` check and bounded static evidence from a clean, read-only
    runner.
 
-PR publication already requires the first control plane to have completed. The merge
-button becomes eligible only after both GitHub control planes also pass. Adoption and
-release pull requests never automerge.
+The merge button becomes eligible only after lifecycle review and both GitHub control
+planes pass. Adoption and release pull requests never automerge.
 
 Consumer membership is never declared here. Each consumer owns explicit Renovate
 intent in its protected config, and GitHub App selected-repository installation is
@@ -40,7 +39,7 @@ The verifier:
 - emits no semantic verdict, lifecycle quality assessment, or lifecycle finding.
 
 Changes to the verifier are checked by the previously pinned verifier revision and
-semantically reviewed through the normal pre-PR lifecycle. This creates a forward
+semantically reviewed through the normal lifecycle. This creates a forward
 static trust chain without allowing the policy verifier to approve itself.
 
 Repository CI prepares validator dependencies under a separate locked boundary:
@@ -69,8 +68,8 @@ independently change its governance mode and require a fresh code-owner approval
 ## Residual risk
 
 Policy verification is deterministic static evidence, not semantic review or
-independent human judgment. Semantic independence is supplied by the lifecycle host
-before publication. Neither control can protect against a malicious sole owner, a
+independent human judgment. Semantic independence is supplied before merge. Neither
+control can protect against a malicious sole owner, a
 compromised owner account, or coordinated compromise of GitHub-hosted infrastructure.
 Hardware-backed account security, short-lived GitHub App tokens, immutable artifacts,
 OIDC publication, reproducible evidence, and recoverable rollback remain mandatory

@@ -9,6 +9,7 @@ import {
   MAX_MANIFEST_BYTES,
   validateConsumerManifest,
 } from './validate-consumer-manifest.mjs';
+import { classifyProcessAdoptionRule } from './process-adoption-contract.mjs';
 
 const API_ROOT = 'https://api.github.com';
 const MAX_API_BYTES = 1_000_000;
@@ -127,18 +128,17 @@ export function classifyConsumerIntent(config, label = 'consumer config') {
     throw new Error(`${label} enables package-rule automerge`);
   }
   if (Object.hasOwn(config, 'postUpgradeTasks')) {
-    throw new Error(`${label}.postUpgradeTasks must be absent`);
+    throw new Error(`${label}.postUpgradeTasks must be scoped to the engineering-process rule`);
   }
   const processRules = (config.packageRules ?? []).filter((rule) =>
     rule?.matchPackageNames?.includes('engineering-process')
   );
-  if (
-    processRules.length > 1
-    || processRules.some((rule) => rule.enabled !== false || rule.automerge !== false)
-  ) {
-    throw new Error(`${label}.engineering-process authority rule must be disabled`);
+  if (processRules.length !== 1) {
+    throw new Error(`${label} must contain exactly one engineering-process rule`);
   }
-  return 'enabled';
+  return classifyProcessAdoptionRule(
+    processRules[0], `${label}.engineering-process rule`
+  ) === 'active' ? 'enabled' : 'disabled';
 }
 
 export function validateConsumerIntent(config, label = 'consumer config') {

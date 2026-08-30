@@ -7,8 +7,20 @@ import {
   revalidateConsumer,
   validateConsumerIntent,
 } from '../scripts/discover-consumers.mjs';
+import {
+  ADOPTION_COMMAND,
+  ADOPTION_FILE_FILTERS,
+} from '../scripts/process-adoption-contract.mjs';
 
 const token = 'installation-token-value';
+function adoptionTask() {
+  return {
+    commands: [ADOPTION_COMMAND],
+    executionMode: 'update',
+    fileFilters: [...ADOPTION_FILE_FILTERS],
+    installTools: { python: {} },
+  };
+}
 function intent(enabled = true) {
   return {
     enabled,
@@ -17,8 +29,10 @@ function intent(enabled = true) {
     branchPrefix: 'automation/renovate/',
     packageRules: [{
       automerge: false,
-      enabled: false,
+      enabled: true,
+      matchFileNames: ['requirements/process.in', 'requirements/process.txt'],
       matchPackageNames: ['engineering-process'],
+      postUpgradeTasks: adoptionTask(),
     }],
   };
 }
@@ -116,14 +130,27 @@ test('consumer intent requires explicit enablement and lifecycle-host adoption p
   );
   assert.throws(
     () => validateConsumerIntent({ ...intent(true), postUpgradeTasks: {} }),
-    /postUpgradeTasks must be absent/,
+    /postUpgradeTasks must be scoped/,
   );
-  const enabledAuthority = intent(true);
-  enabledAuthority.packageRules[0].enabled = true;
-  assert.throws(
-    () => validateConsumerIntent(enabledAuthority),
-    /authority rule must be disabled/,
-  );
+  const disabledAdoption = intent(true);
+  disabledAdoption.packageRules[0].enabled = false;
+  delete disabledAdoption.packageRules[0].postUpgradeTasks;
+  assert.equal(validateConsumerIntent(disabledAdoption), false);
+  const unsafeCommand = intent(true);
+  unsafeCommand.packageRules[0].postUpgradeTasks.commands = ['python arbitrary.py'];
+  assert.throws(() => validateConsumerIntent(unsafeCommand), /invalid adoption task/);
+  for (const mutation of ['missing', 'extra', 'duplicate']) {
+    const invalidFilters = intent(true);
+    const filters = invalidFilters.packageRules[0].postUpgradeTasks.fileFilters;
+    if (mutation === 'missing') filters.pop();
+    if (mutation === 'extra') filters.push('consumer-owned.txt');
+    if (mutation === 'duplicate') filters.push(filters[0]);
+    assert.throws(
+      () => validateConsumerIntent(invalidFilters),
+      /invalid adoption task/,
+      mutation,
+    );
+  }
 });
 
 test('discovery selects only explicit consumer-owned intent and sorts the result', async () => {
