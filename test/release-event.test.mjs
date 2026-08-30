@@ -31,7 +31,7 @@ test('release event rejects a different sender', () => {
 
 test('release event rejects extra payload authority', () => {
   const candidate = event();
-  candidate.client_payload.automerge = true;
+  candidate.client_payload.unexpected = true;
   assert.throws(() => validateReleaseEvent(candidate), /unexpected fields/);
 });
 

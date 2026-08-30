@@ -24,12 +24,11 @@ function adoptionTask() {
 function intent(enabled = true) {
   return {
     enabled,
-    automerge: false,
     draftPR: true,
     branchPrefix: 'automation/renovate/',
     packageRules: [{
-      automerge: false,
       enabled: true,
+      draftPR: true,
       matchFileNames: ['requirements/process.in', 'requirements/process.txt'],
       matchPackageNames: ['engineering-process'],
       postUpgradeTasks: adoptionTask(),
@@ -125,8 +124,14 @@ test('consumer intent requires explicit enablement and lifecycle-host adoption p
   assert.equal(classifyConsumerIntent(absent), 'absent');
   assert.equal(classifyConsumerIntent(intent(false)), 'disabled');
   assert.throws(
-    () => validateConsumerIntent({ ...intent(true), automerge: true }),
-    /automerge must be false/,
+    () => validateConsumerIntent({ ...intent(true), draftPR: false }),
+    /draftPR must be true/,
+  );
+  const readyAdoption = intent(true);
+  readyAdoption.packageRules[0].draftPR = false;
+  assert.throws(
+    () => validateConsumerIntent(readyAdoption),
+    /must keep the adoption pull request in draft/,
   );
   assert.throws(
     () => validateConsumerIntent({ ...intent(true), postUpgradeTasks: {} }),

@@ -50,6 +50,7 @@
         "engineering-process"
       ],
       "enabled": true,
+      "draftPR": true,
       "automerge": false,
       "groupName": "engineering-process",
       "groupSlug": "engineering-process",

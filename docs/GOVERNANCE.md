@@ -16,7 +16,8 @@ Every default-branch change passes three separate control planes:
    runner.
 
 The merge button becomes eligible only after lifecycle review and both GitHub control
-planes pass. Adoption and release pull requests never automerge.
+planes pass. Adoption and release pull requests remain drafts until the owner
+authorizes merge.
 
 Consumer membership is never declared here. Each consumer owns explicit Renovate
 intent in its protected config, and GitHub App selected-repository installation is
@@ -33,7 +34,7 @@ The verifier:
 - binds evidence to full base and head commit SHAs;
 - reviews bounded regular-file changes and rejects credential-shaped content;
 - requires immutable SHA or digest pins for every workflow action;
-- validates non-automerge Renovate and process-adoption contracts;
+- validates draft, owner-authorized Renovate and process-adoption contracts;
 - never receives consumer secrets or a write token;
 - emits retained JSON evidence identifying the verifier commit.
 - emits no semantic verdict, lifecycle quality assessment, or lifecycle finding.

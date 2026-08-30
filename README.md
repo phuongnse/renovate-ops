@@ -19,8 +19,8 @@ config SHA-256 form an ephemeral manifest that is revalidated before and after t
 run and drives exact outcome validation.
 
 Engineering-process adoption is materialized by the consumer's exact managed runner
-inside the Renovate branch. The resulting PR runs project verification and requires
-independent semantic review before the configured human owner can merge it.
+inside the Renovate branch. The resulting draft PR runs project verification and
+requires independent semantic review before the configured human owner can merge it.
 
 Each consumer's first complete attempt may receive one idempotent recovery attempt
 after one fixed five-minute registry-propagation window only for `lockfile-error`, a
@@ -60,9 +60,9 @@ Consumer onboarding is owned by the consumer and GitHub authorization; it never
 requires a source change in this repository:
 
 1. In the consumer, merge a strict Renovate config with explicit `"enabled": true`,
-   `automerge: false`, and the standard branch prefix. If the repository pins
-   `engineering-process`, its package rule must be enabled without automerge and must
-   contain the exact managed adoption command and file filters.
+   `draftPR: true`, and the standard branch prefix. If the repository pins
+   `engineering-process`, its package rule must also set `draftPR: true` and contain
+   the exact managed adoption command and file filters.
 2. Verify the consumer's own required CI, semantic review, supplemental policy
    verification, and branch protection.
 3. Grant the GitHub App selected access to that repository.
