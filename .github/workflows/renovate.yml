@@ -78,7 +78,6 @@ jobs:
       RENOVATE_ATTEMPT_TWO_LOG: /tmp/renovate-production-attempt-2.ndjson
       RENOVATE_DRY_RUN_LOG: /tmp/renovate-dry-run.ndjson
       RENOVATE_CONSUMER_MANIFEST: /tmp/renovate-consumer-manifest.json
-      CUSTOM_COMPILE_COMMAND: pip-compile --generate-hashes --no-emit-index-url --output-file=requirements/process.txt --strip-extras requirements/process.in
       LOG_FILE_FORMAT: json
       LOG_FILE_LEVEL: info
     steps:
@@ -132,7 +131,7 @@ jobs:
           configurationFile: config.cjs
           token: ${{ steps.app-token.outputs.token }}
           renovate-version: 44.37.1@sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
-          env-regex: '^(?:RENOVATE_\w+|CUSTOM_COMPILE_COMMAND|OPS_TARGET_REPOSITORY|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
+          env-regex: '^(?:RENOVATE_\w+|OPS_TARGET_REPOSITORY|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
         env:
           LOG_FILE: ${{ env.RENOVATE_DRY_RUN_LOG }}
           LOG_FORMAT: json
@@ -147,7 +146,7 @@ jobs:
           configurationFile: config.cjs
           token: ${{ steps.app-token.outputs.token }}
           renovate-version: 44.37.1@sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
-          env-regex: '^(?:RENOVATE_\w+|CUSTOM_COMPILE_COMMAND|OPS_TARGET_REPOSITORY|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
+          env-regex: '^(?:RENOVATE_\w+|OPS_TARGET_REPOSITORY|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
         env:
           LOG_FILE: ${{ env.RENOVATE_ATTEMPT_ONE_LOG }}
           LOG_FORMAT: json
@@ -172,7 +171,7 @@ jobs:
           configurationFile: config.cjs
           token: ${{ steps.app-token.outputs.token }}
           renovate-version: 44.37.1@sha256:23183a49b33d9d41f93f4ed0e78bb6171ace9e847efea557bbadb312d5dc3646 # renovate: datasource=docker depName=ghcr.io/renovatebot/renovate
-          env-regex: '^(?:RENOVATE_\w+|CUSTOM_COMPILE_COMMAND|OPS_TARGET_REPOSITORY|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
+          env-regex: '^(?:RENOVATE_\w+|OPS_TARGET_REPOSITORY|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
         env:
           LOG_FILE: ${{ env.RENOVATE_ATTEMPT_TWO_LOG }}
           LOG_FILE_LEVEL: debug

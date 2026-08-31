@@ -1,5 +1,8 @@
 'use strict';
 
+const canonicalPipCompileCommand =
+  'pip-compile --generate-hashes --no-emit-index-url --output-file=requirements/process.txt --strip-extras requirements/process.in';
+
 const target = process.env.OPS_TARGET_REPOSITORY;
 if (target !== undefined && !/^phuongnse\/[a-z0-9._-]+$/.test(target)) {
   throw new Error('OPS_TARGET_REPOSITORY must contain one exact trusted repository');
@@ -17,6 +20,9 @@ module.exports = {
   binarySource: 'install',
   constraints: {
     pipTools: '==7.6.1',
+  },
+  customEnvVariables: {
+    CUSTOM_COMPILE_COMMAND: canonicalPipCompileCommand,
   },
   allowScripts: false,
   allowPlugins: false,
