@@ -54,6 +54,27 @@ test('Renovate outcomes reject branch artifact errors', () => {
   );
 });
 
+test('Renovate outcomes reject an explicit pip-compile manager error', () => {
+  const records = [
+    {
+      errorMessage: 'Option --no-index not supported (yet)',
+      level: 40,
+      msg: 'pip-compile error',
+      repository: repositories[0],
+    },
+    ...completions(),
+  ];
+  assert.throws(
+    () => classifyRenovateRecords(records, repositories),
+    (error) => (
+      error instanceof RenovateOutcomeError
+      && error.code === 'pip-compile-error'
+      && error.retryable === false
+      && /--no-index/.test(error.diagnostic)
+    ),
+  );
+});
+
 test('first-attempt classification retries bounded lockfile artifact errors', () => {
   const records = [
     ...completions(),

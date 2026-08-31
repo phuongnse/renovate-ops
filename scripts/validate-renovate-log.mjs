@@ -46,6 +46,19 @@ export function validateRenovateRecords(records, repositories) {
     if (record === null || typeof record !== 'object' || Array.isArray(record)) {
       throw new RenovateOutcomeError('invalid-record', 'Renovate log contains a non-object record');
     }
+    if (record.msg === 'pip-compile error') {
+      const repository = record.repository ?? 'unknown';
+      throw new RenovateOutcomeError(
+        'pip-compile-error',
+        `Renovate pip-compile failed for ${repository}`,
+        {
+          diagnostic: redactDiagnostic({
+            repository,
+            errorMessage: record.errorMessage ?? 'missing error detail',
+          }),
+        },
+      );
+    }
     if (Array.isArray(record.artifactErrors) && record.artifactErrors.length > 0) {
       const repository = record.repository ?? 'unknown';
       throw new RenovateOutcomeError(
