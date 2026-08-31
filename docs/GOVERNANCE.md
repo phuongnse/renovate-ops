@@ -66,6 +66,33 @@ Each repository owns and applies its own default-branch protection. Steady state
 map of consumer check names. If a second trusted maintainer joins, a consumer may
 independently change its governance mode and require a fresh code-owner approval.
 
+## Production readiness
+
+`.process/readiness.json` selects immutable pack `operations@1` at production stage.
+Its evidence is
+consumer-owned and resolves only through the required development and review profiles:
+
+| Capability | Existing control evidence |
+| --- | --- |
+| `auditability` | Immutable policy report, bounded per-attempt logs, and reconciled incident issues. |
+| `automation-correctness` | Complete Node test suite plus both canonical strict Renovate validators. |
+| `bounded-execution` | Workflow timeouts/concurrency, bounded discovery and manifests, one classified retry, and fail-closed logs. |
+| `least-privilege` | Read-only discovery token, one repository-scoped write token, disabled shell/plugins/scripts, and exact command allowlist. |
+| `policy-integrity` | Immutable action/verifier pins, protected consumer intent, and static policy verification. |
+| `recovery` | Classified retry, incident reconciliation, emergency stop, key rotation, and source rollback procedures. |
+| `target-selection-integrity` | App-installation intersection, explicit consumer intent, immutable config digest, and pre/post execution revalidation. |
+
+The sidecar remains intentionally separate from the strict schema-v5 project manifest.
+The adopted published authority resolves it through `project validate` and `doctor`,
+while a consumer-owned Node test locks the exact mapping to the repository checks.
+The pack certifies this dependency-automation control-plane boundary; it does not
+claim application deployment, service SLO, or product runtime coverage.
+
+Process adoption never upgrades the selected pack version. A later `operations@2`
+may be offered by a new process release while this repository continues to validate
+against `operations@1`; moving standards is a separate owner-authorized readiness
+change. This prevents a new pack requirement from deadlocking authority adoption.
+
 ## Residual risk
 
 Policy verification is deterministic static evidence, not semantic review or
