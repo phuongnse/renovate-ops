@@ -12,13 +12,39 @@ const MAX_FILE_BYTES = 2_000_000;
 const SEMVER = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
-const SOURCE_PIN = /^engineering-process==([^\s\\]+)\s*$/gm;
-const LOCK_PIN = /^engineering-process==([^\s\\]+)\s*\\\s*$/gm;
 const CANONICAL_COMPILE_COMMAND =
   '#    pip-compile --generate-hashes --no-emit-index-url --output-file=requirements/process.txt --strip-extras requirements/process.in';
 
-function exactPins(pattern, content) {
-  return [...content.matchAll(pattern)].map((match) => match[1]);
+function canonicalName(value) {
+  return value.toLowerCase().replaceAll(/[._-]+/g, '-');
+}
+
+export function processBinding(content, { compiled, label }) {
+  const lines = content.split('\n');
+  const bindings = [];
+  const canonical = compiled
+    ? /^engineering-process==([^\s\\]+) \\$/
+    : /^engineering-process==([^\s\\]+)$/;
+  for (const [index, raw] of lines.entries()) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const editable = line.match(/^(?:-e|--editable)\s+([A-Za-z0-9][A-Za-z0-9._-]*)/);
+    if (editable && canonicalName(editable[1]) === 'engineering-process') {
+      throw new Error(`${label} has a non-canonical active engineering-process requirement`);
+    }
+    if (line.startsWith('-')) continue;
+    const name = line.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)/)?.[1];
+    if (!name || canonicalName(name) !== 'engineering-process') continue;
+    const match = canonical.exec(raw);
+    if (match === null) {
+      throw new Error(`${label} has a non-canonical active engineering-process requirement`);
+    }
+    bindings.push({ index, version: match[1] });
+  }
+  if (bindings.length !== 1) {
+    throw new Error(`${label} must contain exactly one active engineering-process requirement`);
+  }
+  return { ...bindings[0], lines };
 }
 
 function decodeFile(document, label) {
@@ -83,23 +109,36 @@ export async function validateCandidate(api, repository, ref, releaseVersion) {
   const source = await fileAt(api, repository, 'requirements/process.in', ref);
   const requirements = await fileAt(api, repository, 'requirements/process.txt', ref);
   const lockFile = await fileAt(api, repository, '.process/process.lock', ref);
-  if (JSON.stringify(exactPins(SOURCE_PIN, source.text)) !== JSON.stringify([releaseVersion])) {
+  const sourceBinding = processBinding(source.text, {
+    compiled: false,
+    label: `${repository}/requirements/process.in@${ref}`,
+  });
+  if (sourceBinding.version !== releaseVersion) {
     throw new Error(`${repository} process source must pin exact release ${releaseVersion}`);
   }
-  const lockPins = exactPins(LOCK_PIN, requirements.text);
-  if (JSON.stringify(lockPins) !== JSON.stringify([releaseVersion])) {
+  const requirementsBinding = processBinding(requirements.text, {
+    compiled: true,
+    label: `${repository}/requirements/process.txt@${ref}`,
+  });
+  if (requirementsBinding.version !== releaseVersion) {
     throw new Error(`${repository} process requirements must pin exact release ${releaseVersion}`);
   }
-  const header = requirements.text.split('\n').slice(0, 7).join('\n');
-  if (!header.includes(CANONICAL_COMPILE_COMMAND) || header.includes('--no-index')) {
+  const recordedCommands = requirementsBinding.lines.filter((line) => /^# {4}\S/.test(line));
+  if (
+    JSON.stringify(recordedCommands) !== JSON.stringify([CANONICAL_COMPILE_COMMAND])
+    || requirementsBinding.lines.indexOf(CANONICAL_COMPILE_COMMAND) > 6
+  ) {
     throw new Error(`${repository} process requirements header is not canonical`);
   }
-  const pinOffset = requirements.text.search(LOCK_PIN);
-  const nextPin = requirements.text.slice(pinOffset + 1).search(/\n[A-Za-z0-9][^\n]*==/);
-  const pinBlock = nextPin < 0
-    ? requirements.text.slice(pinOffset)
-    : requirements.text.slice(pinOffset, pinOffset + 1 + nextPin);
-  if (!/--hash=sha256:[0-9a-f]{64}/.test(pinBlock)) {
+  const hashLines = [];
+  for (const line of requirementsBinding.lines.slice(requirementsBinding.index + 1)) {
+    if (!line.startsWith('    --hash=')) break;
+    hashLines.push(line);
+  }
+  if (
+    hashLines.length < 1
+    || hashLines.some((line) => !/^ {4}--hash=sha256:[0-9a-f]{64}(?: \\)?$/.test(line))
+  ) {
     throw new Error(`${repository} process requirement is not hash locked`);
   }
   const lock = parseLock(lockFile.text, `${repository}/.process/process.lock@${ref}`);
@@ -123,6 +162,7 @@ function validatePullRequest(pull, consumer) {
     || !SHA.test(pull.head?.sha)
     || pull.head?.repo?.full_name !== consumer.repository
     || pull.base?.ref !== consumer.defaultBranch
+    || pull.base?.sha !== consumer.checkpoint
     || pull.base?.repo?.full_name !== consumer.repository
   ) {
     throw new Error(`${consumer.repository} adoption pull request is not one exact open draft`);
@@ -145,7 +185,11 @@ export async function validateProcessAdoptionResult({
     'requirements/process.in',
     expected.checkpoint,
   );
-  if (JSON.stringify(exactPins(SOURCE_PIN, mainSource.text)) === JSON.stringify([releaseVersion])) {
+  const mainBinding = processBinding(mainSource.text, {
+    compiled: false,
+    label: `${expected.repository}/requirements/process.in@${expected.checkpoint}`,
+  });
+  if (mainBinding.version === releaseVersion) {
     return {
       ...(await validateCandidate(api, expected.repository, expected.checkpoint, releaseVersion)),
       location: 'main',
