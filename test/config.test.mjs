@@ -34,6 +34,8 @@ const validationRuntime = await readFile(
   new URL('scripts/verify-validation-runtime.mjs', root),
   'utf8',
 );
+const canonicalPipCompileCommand =
+  'pip-compile --generate-hashes --no-emit-index-url --output-file=requirements/process.txt --strip-extras requirements/process.in';
 
 test('validation dependency scripts are exact, denied by default, and setup-owned', () => {
   assert.deepEqual(packageDocument.allowScripts, {
@@ -45,7 +47,10 @@ test('validation dependency scripts are exact, denied by default, and setup-owne
   assert.equal(processManifest.schemaVersion, 5);
   assert.equal(Object.hasOwn(processManifest, 'environment'), false);
   const processHeader = processRequirements.split('\n').slice(0, 7).join('\n');
-  assert.match(processHeader, /pip-compile --generate-hashes --no-emit-index-url/);
+  assert.match(
+    processHeader,
+    /pip-compile --generate-hashes --no-emit-index-url --output-file=requirements\/process\.txt --strip-extras requirements\/process\.in/,
+  );
   assert.doesNotMatch(processHeader, /--no-index/);
   const action = processManifest.setup.find(
     ({ id }) => id === 'prepare-validation-runtime',
@@ -66,6 +71,11 @@ test('global configuration requires one workflow-supplied target', () => {
   assert.equal(config.autodiscover, false);
   assert.equal(config.onboarding, false);
   assert.equal(config.requireConfig, 'required');
+  assert.deepEqual(config.constraints, { pipTools: '==7.6.1' });
+  assert.deepEqual(config.customEnvVariables, {
+    CUSTOM_COMPILE_COMMAND: canonicalPipCompileCommand,
+  });
+  assert.equal(config.exposeAllEnv, undefined);
   assert.match(workflow, /OPS_TARGET_REPOSITORY: \$\{\{ matrix\.repository \}\}/);
   assert.doesNotMatch(workflow, /repositories\.json|steps\.allowlist/);
 
@@ -140,6 +150,20 @@ test('production Renovate is activated by a bounded authenticated release event'
   assert.match(workflow, /node scripts\/wait-for-renovate-retry\.mjs/);
   assert.match(workflow, /"\$RENOVATE_ATTEMPT_TWO_LOG" "\$RENOVATE_CONSUMER_MANIFEST"/);
   assert.equal((workflow.match(/name: Renovate production attempt [12]/g) ?? []).length, 2);
+  const childCompileCommand = execFileSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      'const { default: config } = await import("./config.cjs"); '
+        + 'const { setCustomEnv } = await import("./node_modules/renovate/dist/util/env.js"); '
+        + 'const { getChildEnv } = await import("./node_modules/renovate/dist/util/exec/utils.js"); '
+        + 'setCustomEnv(config.customEnvVariables); '
+        + 'process.stdout.write(getChildEnv().CUSTOM_COMPILE_COMMAND ?? "");',
+    ],
+    { cwd: new URL('.', root), encoding: 'utf8' },
+  );
+  assert.equal(childCompileCommand, canonicalPipCompileCommand);
   assert.match(workflow, /name: Revalidate consumer intent before execution/);
   assert.match(workflow, /name: Revalidate consumer intent after execution/);
   assert.match(workflow, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
