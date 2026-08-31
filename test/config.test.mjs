@@ -165,6 +165,10 @@ test('production Renovate is activated by a bounded authenticated release event'
   );
   assert.equal(childCompileCommand, canonicalPipCompileCommand);
   assert.match(workflow, /name: Revalidate consumer intent before execution/);
+  assert.match(workflow, /name: Validate exact published process adoption/);
+  assert.match(workflow, /if: github\.event_name == 'repository_dispatch'/);
+  assert.match(workflow, /RELEASE_VERSION: \$\{\{ github\.event\.client_payload\.version \}\}/);
+  assert.match(workflow, /node scripts\/validate-process-adoption-result\.mjs/);
   assert.match(workflow, /name: Revalidate consumer intent after execution/);
   assert.match(workflow, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
   assert.doesNotMatch(workflow, /finalize-adoption-prs|markPullRequestReadyForReview/);
