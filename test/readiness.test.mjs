@@ -23,7 +23,7 @@ const expectedCapabilities = Object.fromEntries(
   ]),
 );
 
-test('operations readiness declaration is exact, versioned, and forward compatible', () => {
+test('operations readiness sidecar is exact, versioned, and authority-resolvable', () => {
   assert.equal(Object.hasOwn(project, 'readiness'), false);
   assert.deepEqual(Object.keys(readiness).sort(), ['capabilities', 'packs', 'stage', 'target']);
   assert.equal(readiness.target, 'production');

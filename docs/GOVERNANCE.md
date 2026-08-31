@@ -82,12 +82,11 @@ consumer-owned and resolves only through the required development and review pro
 | `recovery` | Classified retry, incident reconciliation, emergency stop, key rotation, and source rollback procedures. |
 | `target-selection-integrity` | App-installation intersection, explicit consumer intent, immutable config digest, and pre/post execution revalidation. |
 
-The sidecar is intentionally separate from the strict schema-v5 project manifest so
-public authority 1.0.1 can continue adoption and doctor checks while the next source
-authority validates the new pack. A consumer-owned Node test enforces the exact
-mapping during that bootstrap. The pack certifies this dependency-automation control
-plane boundary; it does not claim application deployment, service SLO, or product
-runtime coverage.
+The sidecar remains intentionally separate from the strict schema-v5 project manifest.
+The adopted published authority resolves it through `project validate` and `doctor`,
+while a consumer-owned Node test locks the exact mapping to the repository checks.
+The pack certifies this dependency-automation control-plane boundary; it does not
+claim application deployment, service SLO, or product runtime coverage.
 
 Process adoption never upgrades the selected pack version. A later `operations@2`
 may be offered by a new process release while this repository continues to validate
