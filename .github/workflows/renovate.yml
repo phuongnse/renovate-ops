@@ -186,6 +186,14 @@ jobs:
           node scripts/validate-renovate-log.mjs
           "$RENOVATE_ATTEMPT_TWO_LOG" "$RENOVATE_CONSUMER_MANIFEST"
 
+      - name: Validate exact published process adoption
+        if: github.event_name == 'repository_dispatch'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_VERSION: ${{ github.event.client_payload.version }}
+          RENOVATE_CONSUMER_JSON: ${{ toJSON(matrix) }}
+        run: node scripts/validate-process-adoption-result.mjs
+
       - name: Revalidate consumer intent after execution
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

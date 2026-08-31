@@ -75,6 +75,8 @@ function client(token, fetchImpl, {
   };
 }
 
+export { client as githubClient };
+
 function decodeConfig(document, label) {
   if (
     document === null
