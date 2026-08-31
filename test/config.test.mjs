@@ -11,6 +11,7 @@ const renovateConfig = JSON.parse(
 );
 const packageDocument = JSON.parse(await readFile(new URL('package.json', root)));
 const processManifest = JSON.parse(await readFile(new URL('.process/project.json', root)));
+const processRequirements = await readFile(new URL('requirements/process.txt', root), 'utf8');
 const npmConfig = await readFile(new URL('.npmrc', root), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('github-app-manifest.json', root)));
 const workflow = await readFile(new URL('.github/workflows/renovate.yml', root), 'utf8');
@@ -43,6 +44,9 @@ test('validation dependency scripts are exact, denied by default, and setup-owne
   assert.equal(npmConfig, 'strict-allow-scripts=true\n');
   assert.equal(processManifest.schemaVersion, 5);
   assert.equal(Object.hasOwn(processManifest, 'environment'), false);
+  const processHeader = processRequirements.split('\n').slice(0, 7).join('\n');
+  assert.match(processHeader, /pip-compile --generate-hashes --no-emit-index-url/);
+  assert.doesNotMatch(processHeader, /--no-index/);
   const action = processManifest.setup.find(
     ({ id }) => id === 'prepare-validation-runtime',
   );
