@@ -15,6 +15,9 @@ module.exports = {
   forkProcessing: 'disabled',
   platformCommit: 'enabled',
   binarySource: 'install',
+  constraints: {
+    pipTools: '==7.6.1',
+  },
   allowScripts: false,
   allowPlugins: false,
   allowShellExecutorForPostUpgradeCommands: false,
