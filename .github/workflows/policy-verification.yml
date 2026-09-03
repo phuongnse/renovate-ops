@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   policy-verification:
-    name: policy-verification
+    name: Shared policy
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -76,6 +76,10 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.18.0
+
+      - name: Install immutable workflow parser
+        working-directory: trusted-verifier
+        run: npm ci --ignore-scripts --omit=dev
 
       - name: Verify immutable policy boundary
         env:

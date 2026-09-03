@@ -24,7 +24,24 @@ async function fixture() {
   await mkdir(path.join(root, '.github', 'workflows'), { recursive: true });
   await writeFile(
     path.join(root, '.github', 'workflows', 'ci.yml'),
-    `name: CI\non: [pull_request]\njobs:\n  verify:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@${checkoutSha}\n`,
+    [
+      'name: CI',
+      'on: [pull_request]',
+      'jobs:',
+      '  policy-verification:',
+      '    name: Policy verification',
+      `    uses: phuongnse/renovate-ops/.github/workflows/policy-verification.yml@${checkoutSha}`,
+      '  verify:',
+      '    name: Verify (${{ matrix.os }}, Python ${{ matrix.python }})',
+      '    strategy:',
+      '      matrix:',
+      '        os: [ubuntu-24.04]',
+      "        python: ['3.14']",
+      '    runs-on: ubuntu-24.04',
+      '    steps:',
+      `      - uses: actions/checkout@${checkoutSha}`,
+      '',
+    ].join('\n'),
   );
   await writeFile(
     path.join(root, '.github', 'renovate.json5'),
@@ -145,7 +162,11 @@ async function prepareOperationsConsumer(root, adoptionState, allowlistState) {
   );
   await writeFile(
     path.join(root, '.github', 'workflows', 'renovate.yml'),
-    'name: Renovate\non: workflow_dispatch\n',
+    'name: Renovate\non: workflow_dispatch\njobs:\n  renovate:\n    name: Renovate\n    runs-on: ubuntu-24.04\n',
+  );
+  await writeFile(
+    path.join(root, '.github', 'workflows', 'policy-verification.yml'),
+    'name: Policy verification\non: workflow_call\njobs:\n  policy-verification:\n    name: Shared policy\n    runs-on: ubuntu-24.04\n',
   );
 }
 
@@ -170,11 +191,173 @@ test('policy verifier uses the explicit immutable event path without a semantic 
   assert.deepEqual(report.changedFileCount, 1);
 });
 
+test('policy verifier rejects invalid workflow display names', async (context) => {
+  const cases = [
+    {
+      name: 'missing workflow display name',
+      replace: ['name: CI\n', ''],
+      expected: /display name must be a non-empty one-line string/,
+    },
+    {
+      name: 'lowercase workflow display name',
+      replace: ['name: CI', 'name: ci'],
+      expected: /display name must be sentence case/,
+    },
+    {
+      name: 'missing job display name',
+      replace: ['    name: Verify (${{ matrix.os }}, Python ${{ matrix.python }})\n', ''],
+      expected: /display name must be a non-empty one-line string/,
+    },
+    {
+      name: 'slash-delimited matrix display name',
+      replace: [
+        'Verify (${{ matrix.os }}, Python ${{ matrix.python }})',
+        'Verify / ${{ matrix.os }} / ${{ matrix.python }}',
+      ],
+      expected: /matrix display name must use one final parenthesized suffix/,
+    },
+    {
+      name: 'static matrix display name',
+      replace: ['Verify (${{ matrix.os }}, Python ${{ matrix.python }})', 'Verify'],
+      expected: /matrix job display name must include its matrix values/,
+    },
+    {
+      name: 'duplicated shared policy caller name',
+      replace: ['name: Policy verification', 'name: Shared policy'],
+      expected: /shared policy caller must be named Policy verification/,
+    },
+    {
+      name: 'block scalar display name',
+      replace: ['name: CI', 'name: >\n  CI'],
+      expected: /display name must be a non-empty one-line string/,
+    },
+    {
+      name: 'implicit null display name',
+      replace: ['name: CI', 'name: Null'],
+      expected: /display name must be a non-empty one-line string/,
+    },
+    {
+      name: 'implicit boolean display name',
+      replace: ['name: CI', 'name: True'],
+      expected: /display name must be a non-empty one-line string/,
+    },
+    {
+      name: 'duplicate mapping key',
+      replace: ['name: CI', 'name: CI\nname: Duplicate'],
+      expected: /invalid workflow YAML/,
+    },
+    {
+      name: 'malformed flow sequence',
+      replace: ['on: [pull_request]', 'on: [pull_request'],
+      expected: /invalid workflow YAML/,
+    },
+  ];
+  for (const item of cases) {
+    await context.test(item.name, async () => {
+      const { root, baseSha } = await fixture();
+      const workflowPath = path.join(root, '.github', 'workflows', 'ci.yml');
+      const workflow = await readFile(workflowPath, 'utf8');
+      assert.ok(workflow.includes(item.replace[0]));
+      await writeFile(workflowPath, workflow.replace(...item.replace));
+      git(root, 'add', '--', '.github/workflows/ci.yml');
+      git(root, 'commit', '-qm', 'test: use invalid workflow display name');
+      const headSha = git(root, 'rev-parse', 'HEAD');
+      const eventPath = await eventFile(root, baseSha, headSha);
+      const result = runVerifier(root, eventPath, path.join(root, 'report.json'));
+
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, item.expected);
+    });
+  }
+});
+
+test('policy verifier accepts supported YAML spellings', async (context) => {
+  const documents = [
+    [
+      "'name' : \"CI\" # public workflow",
+      'on : [pull_request]',
+      'jobs : {',
+      `  policy: { "name" : 'Policy verification', "uses" : phuongnse/renovate-ops/.github/workflows/policy-verification.yml@${checkoutSha} },`,
+      `  verify: &verify_job { name: 'Verify (\${{ matrix.os }})', strategy: { matrix: { os: [ubuntu-24.04] } }, runs-on: ubuntu-24.04, steps: [ { "uses" : actions/checkout@${checkoutSha} } ] },`,
+      '  verify-copy: *verify_job',
+      '}',
+      '',
+    ].join('\n'),
+    [
+      'name: CI',
+      'on: [pull_request]',
+      'jobs:',
+      '    verify:',
+      '        name: Verify',
+      '        runs-on: ubuntu-24.04',
+      '        steps:',
+      `            - uses : actions/checkout@${checkoutSha}`,
+      '',
+    ].join('\n'),
+  ];
+  for (const [index, document] of documents.entries()) {
+    await context.test(`document ${index + 1}`, async () => {
+      const { root, baseSha } = await fixture();
+      const workflowPath = path.join(root, '.github', 'workflows', 'ci.yml');
+      await writeFile(workflowPath, document);
+      git(root, 'add', '--', '.github/workflows/ci.yml');
+      git(root, 'commit', '-qm', 'test: use supported workflow YAML');
+      const headSha = git(root, 'rev-parse', 'HEAD');
+      const eventPath = await eventFile(root, baseSha, headSha);
+      const result = runVerifier(root, eventPath, path.join(root, 'report.json'));
+
+      assert.equal(result.status, 0, result.stderr);
+    });
+  }
+});
+
+test('policy verifier enforces quoted and spaced uses keys', async (context) => {
+  const cases = [
+    {
+      name: 'mutable action',
+      caller: 'Policy verification',
+      reference: 'main',
+      expected: /workflow action is not immutably pinned/,
+    },
+    {
+      name: 'wrong shared caller',
+      caller: 'Wrong caller',
+      repository: 'PhuongNSE/Renovate-Ops',
+      reference: checkoutSha,
+      expected: /shared policy caller must be named Policy verification/,
+    },
+  ];
+  for (const item of cases) {
+    await context.test(item.name, async () => {
+      const { root, baseSha } = await fixture();
+      const workflowPath = path.join(root, '.github', 'workflows', 'ci.yml');
+      const workflow = await readFile(workflowPath, 'utf8');
+      await writeFile(
+        workflowPath,
+        workflow
+          .replace('name: Policy verification', `name: ${item.caller}`)
+          .replace(
+            `uses: phuongnse/renovate-ops/.github/workflows/policy-verification.yml@${checkoutSha}`,
+            `'uses' : ${item.repository ?? 'phuongnse/renovate-ops'}/.github/workflows/policy-verification.yml@${item.reference}`,
+          ),
+      );
+      git(root, 'add', '--', '.github/workflows/ci.yml');
+      git(root, 'commit', '-qm', 'test: spell reusable uses key differently');
+      const headSha = git(root, 'rev-parse', 'HEAD');
+      const eventPath = await eventFile(root, baseSha, headSha);
+      const result = runVerifier(root, eventPath, path.join(root, 'report.json'));
+
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, item.expected);
+    });
+  }
+});
+
 test('policy verifier rejects a mutable action reference', async () => {
   const { root, baseSha } = await fixture();
   await writeFile(
     path.join(root, '.github', 'workflows', 'ci.yml'),
-    'name: CI\non: [pull_request]\njobs:\n  verify:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@main\n',
+    'name: CI\non: [pull_request]\njobs:\n  verify:\n    name: Verify\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@main\n',
   );
   git(root, 'add', '--', '.github/workflows/ci.yml');
   git(root, 'commit', '-qm', 'ci: use mutable action');

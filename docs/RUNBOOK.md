@@ -46,10 +46,17 @@ must approve it before the configured human owner merges it.
    protection in this introduction stage.
 2. Merge the introduction through the configured human owner and resolve its exact
    commit on `main`.
-3. In a separate lifecycle change, pin self-CI to that exact main commit and prove the
-   new policy check on the final checkpoint.
-4. Only after the new check passes, switch live branch protection to its exact context.
-   Restore the old context if cutover cannot complete.
+3. In a separate lifecycle change, normalize every workflow and job display name,
+   pin self-CI to that exact main commit, and prove the new
+   `Policy verification / Shared policy` check on the final checkpoint. Matrix values
+   belong in one final parenthesized suffix.
+4. After both `Validate operations` and `Policy verification / Shared policy` pass,
+   run `node scripts/configure-branch-protection.mjs --migrate-ci-contexts PR_NUMBER HEAD_SHA`.
+   The command requires an open same-repository PR to `main`, its current head, and
+   both successful GitHub Actions checks before replacing only the old contexts. If
+   cutover cannot complete, restore the old caller and pin on that PR, wait for both
+   old contexts, then run
+   `node scripts/configure-branch-protection.mjs --restore-ci-contexts PR_NUMBER HEAD_SHA`.
 5. Retire the old caller and workflow only after the new context is active. Never pin
    a reusable workflow to an unmerged commit or weaken protection to break a cycle.
 

@@ -1,6 +1,7 @@
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { parseDocument } from 'yaml';
 
 import {
   ADOPTION_ALLOWED_COMMAND,
@@ -10,6 +11,8 @@ import {
 const maximumChangedFiles = 1_000;
 const maximumReviewedBlobBytes = 2_000_000;
 const maximumAggregateBytes = 25_000_000;
+const sharedPolicyCallerName = 'Policy verification';
+const sharedPolicyCalleeName = 'Shared policy';
 
 function argument(name) {
   const index = process.argv.indexOf(name);
@@ -84,6 +87,143 @@ function blobAt(root, sha, file) {
   return result.stdout;
 }
 
+function workflowFiles(root, sha) {
+  const result = git(
+    root,
+    ['ls-tree', '-r', '--name-only', '-z', sha, '--', '.github/workflows'],
+    { encoding: 'buffer' },
+  );
+  const files = result.stdout
+    .toString('utf8')
+    .split('\0')
+    .filter((file) => /\.ya?ml$/.test(file));
+  if (files.length > maximumChangedFiles) {
+    throw new Error(`workflow file count exceeds ${maximumChangedFiles}`);
+  }
+  for (const file of files) assertSafePath(file);
+  return files;
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseWorkflow(root, headSha, file) {
+  const document = parseDocument(blobAt(root, headSha, file).toString('utf8'), {
+    prettyErrors: false,
+    strict: true,
+    uniqueKeys: true,
+  });
+  const problem = document.errors[0] ?? document.warnings[0];
+  if (problem) throw new Error(`${file}: invalid workflow YAML: ${problem.message}`);
+  let workflow;
+  try {
+    workflow = document.toJS({ maxAliasCount: 100 });
+  } catch (error) {
+    throw new Error(`${file}: invalid workflow YAML: ${error.message}`);
+  }
+  if (!isRecord(workflow)) throw new Error(`${file}: workflow must be a mapping`);
+  return workflow;
+}
+
+function assertDisplayName(name, location, matrixJob = false) {
+  if (typeof name !== 'string' || !name || name !== name.trim()
+    || /[\0-\x1f\x7f]/.test(name)) {
+    throw new Error(`${location}: display name must be a non-empty one-line string`);
+  }
+  if (!/^[A-Z]/.test(name)) {
+    throw new Error(`${location}: display name must be sentence case`);
+  }
+  const referencesMatrix = /\$\{\{\s*matrix(?:\.|\[)/.test(name);
+  if (matrixJob && !referencesMatrix) {
+    throw new Error(`${location}: matrix job display name must include its matrix values`);
+  }
+  if (!referencesMatrix) return;
+  const suffix = name.match(/ \(([^()]*)\)$/);
+  const item = /^(?:[A-Z][A-Za-z0-9 ._-]* )?\$\{\{ matrix\.[A-Za-z_][A-Za-z0-9_-]* \}\}$/;
+  if (
+    !suffix
+    || name.slice(0, suffix.index).includes('${{')
+    || !suffix[1].split(', ').every((value) => item.test(value))
+  ) {
+    throw new Error(
+      `${location}: matrix display name must use one final parenthesized suffix`,
+    );
+  }
+}
+
+function assertActionReference(reference, file) {
+  const externalAction =
+    /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[^@\s]+)?@[0-9a-f]{40}$/;
+  const dockerAction = /^docker:\/\/[^\s]+@sha256:[0-9a-f]{64}$/;
+  if (typeof reference !== 'string' || reference !== reference.trim()) {
+    throw new Error(`workflow action reference must be a string: ${file}`);
+  }
+  if (reference.startsWith('./')) return;
+  if (!externalAction.test(reference) && !dockerAction.test(reference)) {
+    throw new Error(`workflow action is not immutably pinned: ${file}: ${reference}`);
+  }
+}
+
+function isSharedPolicyReference(reference) {
+  if (typeof reference !== 'string') return false;
+  const target = reference.slice(0, reference.lastIndexOf('@'));
+  const [owner, name, ...workflowPath] = target.split('/');
+  return owner?.toLowerCase() === 'phuongnse'
+    && name?.toLowerCase() === 'renovate-ops'
+    && workflowPath.join('/') === '.github/workflows/policy-verification.yml';
+}
+
+function assertWorkflowPolicy(root, headSha, repository) {
+  let foundSharedPolicyCallee = false;
+  const files = workflowFiles(root, headSha);
+  if (files.length === 0) throw new Error('repository must declare a workflow');
+  for (const file of files) {
+    const workflow = parseWorkflow(root, headSha, file);
+    assertDisplayName(workflow.name, `${file}: workflow`);
+    if (!isRecord(workflow.jobs) || Object.keys(workflow.jobs).length === 0) {
+      throw new Error(`${file}: workflow must declare a non-empty jobs mapping`);
+    }
+    for (const [jobId, job] of Object.entries(workflow.jobs)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(jobId) || !isRecord(job)) {
+        throw new Error(`${file}: invalid job ${jobId}`);
+      }
+      const matrixJob = isRecord(job.strategy)
+        && Object.hasOwn(job.strategy, 'matrix');
+      assertDisplayName(job.name, `${file}: job ${jobId}`, matrixJob);
+      const references = [];
+      if (Object.hasOwn(job, 'uses')) references.push(job.uses);
+      if (Object.hasOwn(job, 'steps')) {
+        if (!Array.isArray(job.steps)) throw new Error(`${file}: job ${jobId} steps must be a sequence`);
+        for (const step of job.steps) {
+          if (!isRecord(step)) throw new Error(`${file}: job ${jobId} step must be a mapping`);
+          if (Object.hasOwn(step, 'uses')) references.push(step.uses);
+        }
+      }
+      for (const reference of references) assertActionReference(reference, file);
+      const sharedPolicyCall = isSharedPolicyReference(job.uses);
+      if (sharedPolicyCall && job.name !== sharedPolicyCallerName) {
+        throw new Error(
+          `${file}: shared policy caller must be named ${sharedPolicyCallerName}`,
+        );
+      }
+      if (
+        repository === 'phuongnse/renovate-ops'
+        && file === '.github/workflows/policy-verification.yml'
+        && jobId === 'policy-verification'
+      ) {
+        if (job.name !== sharedPolicyCalleeName) {
+          throw new Error(`${file}: reusable job must be named ${sharedPolicyCalleeName}`);
+        }
+        foundSharedPolicyCallee = true;
+      }
+    }
+  }
+  if (repository === 'phuongnse/renovate-ops' && !foundSharedPolicyCallee) {
+    throw new Error('operations repository must declare the shared policy callee');
+  }
+}
+
 function assertRegularBlob(root, sha, file) {
   const result = git(root, ['ls-tree', sha, '--', file]);
   const mode = result.stdout.trim().split(/\s+/, 1)[0];
@@ -102,33 +242,6 @@ function assertNoCredential(blob, file) {
   ];
   if (patterns.some((pattern) => pattern.test(text))) {
     throw new Error(`credential-shaped content detected: ${file}`);
-  }
-}
-
-function assertActionPins(root, headSha) {
-  const result = git(
-    root,
-    ['ls-tree', '-r', '--name-only', '-z', headSha, '--', '.github/workflows'],
-    { encoding: 'buffer' },
-  );
-  const workflowFiles = result.stdout
-    .toString('utf8')
-    .split('\0')
-    .filter((file) => /\.ya?ml$/.test(file));
-  const externalAction =
-    /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[^@\s]+)?@[0-9a-f]{40}$/;
-  const dockerAction = /^docker:\/\/[^\s]+@sha256:[0-9a-f]{64}$/;
-  for (const file of workflowFiles) {
-    const text = blobAt(root, headSha, file).toString('utf8');
-    for (const line of text.split(/\r?\n/)) {
-      const match = line.match(/^\s*(?:-\s*)?uses:\s*['"]?([^'"\s#]+)['"]?/);
-      if (!match) continue;
-      const reference = match[1];
-      if (reference.startsWith('./')) continue;
-      if (!externalAction.test(reference) && !dockerAction.test(reference)) {
-        throw new Error(`workflow action is not immutably pinned: ${file}: ${reference}`);
-      }
-    }
   }
 }
 
@@ -279,7 +392,7 @@ async function main() {
   if (aggregateBytes > maximumAggregateBytes) {
     throw new Error(`reviewed bytes exceed ${maximumAggregateBytes}`);
   }
-  assertActionPins(projectRoot, headSha);
+  assertWorkflowPolicy(projectRoot, headSha, repository);
   const adoptionState = await assertRenovateContract(projectRoot);
   await assertProcessLock(projectRoot);
   await assertOperationsBoundary(projectRoot, repository, adoptionState);

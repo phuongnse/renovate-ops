@@ -19,6 +19,9 @@
     "dtrace-provider": false,
     "re2@1.26.1": true
   },
+  "dependencies": {
+    "yaml": "2.9.0"
+  },
   "devDependencies": {
     "renovate": "44.37.1"
   }

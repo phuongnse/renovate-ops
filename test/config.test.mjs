@@ -4,6 +4,12 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import config from '../config.cjs';
+import {
+  assertLivePullRequest,
+  assertMigrationArguments,
+  replaceRequiredChecks,
+  verifiedMigrationChecks,
+} from '../scripts/configure-branch-protection.mjs';
 
 const root = new URL('../', import.meta.url);
 const readText = async (url) => (await readFile(url, 'utf8')).replaceAll('\r\n', '\n');
@@ -32,6 +38,7 @@ test('validation dependency scripts are exact, denied by default, and setup-owne
     'dtrace-provider': false,
     're2@1.26.1': true,
   });
+  assert.deepEqual(packageDocument.dependencies, { yaml: '2.9.0' });
   assert.equal(npmConfig, 'strict-allow-scripts=true\n');
   assert.equal(processManifest.schemaVersion, 5);
   assert.equal(Object.hasOwn(processManifest, 'environment'), false);
@@ -189,8 +196,10 @@ test('superseded CI semantic-review and adoption-finalizer sources are absent', 
 
 test('trust-root rotation retains proof-before-cutover and restoration guidance', () => {
   assert.match(runbook, /pin self-CI to that exact main commit/i);
-  assert.match(runbook, /Restore the old context if cutover cannot complete/i);
+  assert.match(runbook, /If\s+cutover cannot complete.*--restore-ci-contexts/is);
   assert.match(runbook, /Retire the old caller and workflow only after the new context is active/i);
+  assert.match(runbook, /--migrate-ci-contexts PR_NUMBER HEAD_SHA/);
+  assert.match(runbook, /--restore-ci-contexts/);
 });
 
 test('runtime and actions are immutable and Docker socket is unavailable', () => {
@@ -230,10 +239,11 @@ test('manifest bootstrap binds the callback to an unguessable state', () => {
 });
 
 test('main protection requires CI, policy verification, and immutable history', () => {
-  assert.match(
-    branchProtection,
-    /contexts: \['validate', 'policy-verification \/ policy-verification'\]/,
-  );
+  assert.match(branchProtection, /currentContexts = \['validate', 'policy-verification \/ policy-verification'\]/);
+  assert.match(branchProtection, /nextContexts = \['Validate operations', 'Policy verification \/ Shared policy'\]/);
+  assert.match(branchProtection, /commits\/\$\{headSha\}\/check-runs\?per_page=100/);
+  assert.match(branchProtection, /check\.head_sha === headSha/);
+  assert.match(branchProtection, /check\.app\?\.slug === 'github-actions'/);
   assert.match(branchProtection, /enforce_admins: true/);
   assert.match(branchProtection, /required_pull_request_reviews: null/);
   assert.match(branchProtection, /required_linear_history: true/);
@@ -242,7 +252,99 @@ test('main protection requires CI, policy verification, and immutable history', 
   assert.match(branchProtection, /allow_deletions: false/);
 });
 
+test('CI context migration binds a live PR and preserves unrelated checks', () => {
+  const headSha = 'a'.repeat(40);
+  const checks = ['Validate operations', 'Policy verification / Shared policy'].map((name) => ({
+    app: { id: 15368, slug: 'github-actions' },
+    conclusion: 'success',
+    head_sha: headSha,
+    name,
+    status: 'completed',
+  }));
+  const targetChecks = verifiedMigrationChecks(
+    headSha,
+    ['Validate operations', 'Policy verification / Shared policy'],
+    checks,
+  );
+  assert.deepEqual(targetChecks, [
+    { context: 'Validate operations', app_id: 15368 },
+    { context: 'Policy verification / Shared policy', app_id: 15368 },
+  ]);
+  const pullRequest = {
+    number: 39,
+    state: 'open',
+    base: { ref: 'main', repo: { full_name: 'PhuongNSE/Renovate-Ops' } },
+    head: { sha: headSha, repo: { full_name: 'phuongnse/renovate-ops' } },
+  };
+  assert.doesNotThrow(() => assertLivePullRequest(pullRequest, '39', headSha));
+  assertMigrationArguments('39', headSha);
+  assert.throws(() => assertMigrationArguments('39', 'main'), /full SHA/);
+  assert.throws(
+    () => assertLivePullRequest({ ...pullRequest, state: 'closed' }, '39', headSha),
+    /current head of an open same-repository PR/,
+  );
+  for (const invalid of [
+    checks.slice(1),
+    checks.map((check) => ({ ...check, head_sha: 'b'.repeat(40) })),
+    checks.map((check) => ({ ...check, app: { slug: 'other' } })),
+    checks.map((check) => ({ ...check, conclusion: 'failure' })),
+  ]) {
+    assert.throws(
+      () => verifiedMigrationChecks(
+        headSha,
+        ['Validate operations', 'Policy verification / Shared policy'],
+        invalid,
+      ),
+      /lacks successful required contexts/,
+    );
+  }
+  const current = {
+    strict: true,
+    checks: [
+      { context: 'validate', app_id: 15368 },
+      { context: 'policy-verification / policy-verification', app_id: 15368 },
+      { context: 'Unrelated security gate', app_id: 42 },
+    ],
+  };
+  const update = replaceRequiredChecks(
+    current,
+    ['validate', 'policy-verification / policy-verification'],
+    targetChecks,
+  );
+  assert.deepEqual(update, {
+    strict: true,
+    checks: [
+      { context: 'Unrelated security gate', app_id: 42 },
+      ...targetChecks,
+    ],
+  });
+  assert.deepEqual(
+    replaceRequiredChecks(
+      update,
+      ['validate', 'policy-verification / policy-verification'],
+      targetChecks,
+    ),
+    update,
+  );
+  assert.throws(
+    () => replaceRequiredChecks(
+      { strict: true, checks: [current.checks[0], targetChecks[0]] },
+      ['validate', 'policy-verification / policy-verification'],
+      targetChecks,
+    ),
+    /complete migration state/,
+  );
+  const migrateBody = branchProtection.slice(branchProtection.indexOf('function migrate'));
+  assert.ok(
+    migrateBody.indexOf('assertMigrationArguments(pullRequestNumber, headSha);')
+      < migrateBody.indexOf('pulls/${pullRequestNumber}'),
+  );
+  assert.match(migrateBody, /--method', 'PATCH', statusChecksPath/);
+});
+
 test('policy verification resolves verifier code from the exact Stage A main SHA', () => {
+  assert.match(policyWorkflow, /policy-verification:\n    name: Shared policy\n/);
+  assert.match(policyWorkflow, /npm ci --ignore-scripts --omit=dev/);
   assert.match(policyWorkflow, /permissions:\n  contents: read/);
   assert.match(policyWorkflow, /repository: \$\{\{ job\.workflow_repository \}\}/);
   assert.match(policyWorkflow, /ref: \$\{\{ job\.workflow_sha \}\}/);
