@@ -10,6 +10,8 @@ import {
 const maximumChangedFiles = 1_000;
 const maximumReviewedBlobBytes = 2_000_000;
 const maximumAggregateBytes = 25_000_000;
+const sharedPolicyCallerName = 'Policy verification';
+const sharedPolicyCalleeName = 'Shared policy';
 
 function argument(name) {
   const index = process.argv.indexOf(name);
@@ -84,6 +86,146 @@ function blobAt(root, sha, file) {
   return result.stdout;
 }
 
+function workflowFiles(root, sha) {
+  const result = git(
+    root,
+    ['ls-tree', '-r', '--name-only', '-z', sha, '--', '.github/workflows'],
+    { encoding: 'buffer' },
+  );
+  const files = result.stdout
+    .toString('utf8')
+    .split('\0')
+    .filter((file) => /\.ya?ml$/.test(file));
+  if (files.length > maximumChangedFiles) {
+    throw new Error(`workflow file count exceeds ${maximumChangedFiles}`);
+  }
+  for (const file of files) assertSafePath(file);
+  return files;
+}
+
+function parseDisplayName(raw, location) {
+  const source = raw.trim();
+  const singleQuoted = source.match(/^'((?:[^']|'')*)'(?:\s+#.*)?$/);
+  const doubleQuoted = source.match(/^("(?:[^"\\]|\\.)*")(?:\s+#.*)?$/);
+  let name;
+  if (singleQuoted) {
+    name = singleQuoted[1].replaceAll("''", "'");
+  } else if (doubleQuoted) {
+    try {
+      name = JSON.parse(doubleQuoted[1]);
+    } catch {
+      throw new Error(`${location}: display name must be a plain one-line string`);
+    }
+  } else {
+    name = source.replace(/\s+#.*$/, '').trimEnd();
+    if (['>', '|', '&', '*', '!', '[', '{'].some((prefix) => name.startsWith(prefix))
+      || name.includes(': ')) {
+      throw new Error(`${location}: display name must be a plain one-line string`);
+    }
+  }
+  if (!name || name !== name.trim() || /[\0-\x1f\x7f]/.test(name)) {
+    throw new Error(`${location}: display name must be a non-empty one-line string`);
+  }
+  return name;
+}
+
+function assertDisplayName(name, location) {
+  if (!/^[A-Z]/.test(name)) {
+    throw new Error(`${location}: display name must be sentence case`);
+  }
+  if (!/\$\{\{\s*matrix(?:\.|\[)/.test(name)) return;
+  const suffix = name.match(/ \(([^()]*)\)$/);
+  const item = /^(?:[A-Z][A-Za-z0-9 ._-]* )?\$\{\{ matrix\.[A-Za-z_][A-Za-z0-9_-]* \}\}$/;
+  if (
+    !suffix
+    || name.slice(0, suffix.index).includes('${{')
+    || !suffix[1].split(', ').every((value) => item.test(value))
+  ) {
+    throw new Error(
+      `${location}: matrix display name must use one final parenthesized suffix`,
+    );
+  }
+}
+
+function assertWorkflowNames(root, headSha, repository) {
+  let foundSharedPolicyCallee = false;
+  for (const file of workflowFiles(root, headSha)) {
+    const lines = blobAt(root, headSha, file).toString('utf8').split(/\r?\n/);
+    const workflowNames = lines
+      .map((line, index) => ({ index, match: line.match(/^name:\s*(.*)$/) }))
+      .filter(({ match }) => match);
+    if (workflowNames.length !== 1) {
+      throw new Error(`${file}: workflow must declare exactly one display name`);
+    }
+    const workflowName = parseDisplayName(
+      workflowNames[0].match[1], `${file}:${workflowNames[0].index + 1}`,
+    );
+    assertDisplayName(workflowName, `${file}:${workflowNames[0].index + 1}`);
+
+    const jobs = lines
+      .map((line, index) => ({ index, match: line.match(/^jobs:\s*(?:#.*)?$/) }))
+      .filter(({ match }) => match);
+    if (jobs.length !== 1) throw new Error(`${file}: workflow must declare one jobs mapping`);
+    let end = lines.length;
+    for (let index = jobs[0].index + 1; index < lines.length; index += 1) {
+      if (/^[^\s#]/.test(lines[index])) {
+        end = index;
+        break;
+      }
+    }
+    const entries = [];
+    for (let index = jobs[0].index + 1; index < end; index += 1) {
+      const match = lines[index].match(/^  ([A-Za-z_][A-Za-z0-9_-]*):\s*(?:#.*)?$/);
+      if (match) entries.push({ id: match[1], index });
+      else if (/^  \S/.test(lines[index]) && !/^  #/.test(lines[index])) {
+        throw new Error(`${file}:${index + 1}: unsupported jobs mapping entry`);
+      }
+    }
+    if (entries.length === 0) throw new Error(`${file}: jobs mapping must not be empty`);
+    if (new Set(entries.map(({ id }) => id)).size !== entries.length) {
+      throw new Error(`${file}: job identifiers must be unique`);
+    }
+    for (let offset = 0; offset < entries.length; offset += 1) {
+      const entry = entries[offset];
+      const entryEnd = entries[offset + 1]?.index ?? end;
+      const jobLines = lines.slice(entry.index + 1, entryEnd);
+      const names = jobLines
+        .map((line, index) => ({ index, match: line.match(/^    name:\s*(.*)$/) }))
+        .filter(({ match }) => match);
+      if (names.length !== 1) {
+        throw new Error(`${file}: job ${entry.id} must declare exactly one display name`);
+      }
+      const lineNumber = entry.index + names[0].index + 2;
+      const name = parseDisplayName(names[0].match[1], `${file}:${lineNumber}`);
+      assertDisplayName(name, `${file}:${lineNumber}`);
+      const sharedPolicyCall = jobLines.some((line) => {
+        const match = line.match(/^    uses:\s*['"]?([^'"\s#]+)['"]?/);
+        return match?.[1].startsWith(
+          'phuongnse/renovate-ops/.github/workflows/policy-verification.yml@',
+        );
+      });
+      if (sharedPolicyCall && name !== sharedPolicyCallerName) {
+        throw new Error(
+          `${file}: shared policy caller must be named ${sharedPolicyCallerName}`,
+        );
+      }
+      if (
+        repository === 'phuongnse/renovate-ops'
+        && file === '.github/workflows/policy-verification.yml'
+        && entry.id === 'policy-verification'
+      ) {
+        if (name !== sharedPolicyCalleeName) {
+          throw new Error(`${file}: reusable job must be named ${sharedPolicyCalleeName}`);
+        }
+        foundSharedPolicyCallee = true;
+      }
+    }
+  }
+  if (repository === 'phuongnse/renovate-ops' && !foundSharedPolicyCallee) {
+    throw new Error('operations repository must declare the shared policy callee');
+  }
+}
+
 function assertRegularBlob(root, sha, file) {
   const result = git(root, ['ls-tree', sha, '--', file]);
   const mode = result.stdout.trim().split(/\s+/, 1)[0];
@@ -106,19 +248,10 @@ function assertNoCredential(blob, file) {
 }
 
 function assertActionPins(root, headSha) {
-  const result = git(
-    root,
-    ['ls-tree', '-r', '--name-only', '-z', headSha, '--', '.github/workflows'],
-    { encoding: 'buffer' },
-  );
-  const workflowFiles = result.stdout
-    .toString('utf8')
-    .split('\0')
-    .filter((file) => /\.ya?ml$/.test(file));
   const externalAction =
     /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[^@\s]+)?@[0-9a-f]{40}$/;
   const dockerAction = /^docker:\/\/[^\s]+@sha256:[0-9a-f]{64}$/;
-  for (const file of workflowFiles) {
+  for (const file of workflowFiles(root, headSha)) {
     const text = blobAt(root, headSha, file).toString('utf8');
     for (const line of text.split(/\r?\n/)) {
       const match = line.match(/^\s*(?:-\s*)?uses:\s*['"]?([^'"\s#]+)['"]?/);
@@ -279,6 +412,7 @@ async function main() {
   if (aggregateBytes > maximumAggregateBytes) {
     throw new Error(`reviewed bytes exceed ${maximumAggregateBytes}`);
   }
+  assertWorkflowNames(projectRoot, headSha, repository);
   assertActionPins(projectRoot, headSha);
   const adoptionState = await assertRenovateContract(projectRoot);
   await assertProcessLock(projectRoot);

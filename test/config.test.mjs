@@ -232,7 +232,7 @@ test('manifest bootstrap binds the callback to an unguessable state', () => {
 test('main protection requires CI, policy verification, and immutable history', () => {
   assert.match(
     branchProtection,
-    /contexts: \['validate', 'policy-verification \/ policy-verification'\]/,
+    /contexts: \['Validate operations', 'Policy verification \/ Shared policy'\]/,
   );
   assert.match(branchProtection, /enforce_admins: true/);
   assert.match(branchProtection, /required_pull_request_reviews: null/);
@@ -243,6 +243,7 @@ test('main protection requires CI, policy verification, and immutable history', 
 });
 
 test('policy verification resolves verifier code from the exact Stage A main SHA', () => {
+  assert.match(policyWorkflow, /policy-verification:\n    name: Shared policy\n/);
   assert.match(policyWorkflow, /permissions:\n  contents: read/);
   assert.match(policyWorkflow, /repository: \$\{\{ job\.workflow_repository \}\}/);
   assert.match(policyWorkflow, /ref: \$\{\{ job\.workflow_sha \}\}/);

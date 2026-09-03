@@ -46,10 +46,14 @@ must approve it before the configured human owner merges it.
    protection in this introduction stage.
 2. Merge the introduction through the configured human owner and resolve its exact
    commit on `main`.
-3. In a separate lifecycle change, pin self-CI to that exact main commit and prove the
-   new policy check on the final checkpoint.
-4. Only after the new check passes, switch live branch protection to its exact context.
-   Restore the old context if cutover cannot complete.
+3. In a separate lifecycle change, normalize every workflow and job display name,
+   pin self-CI to that exact main commit, and prove the new
+   `Policy verification / Shared policy` check on the final checkpoint. Matrix values
+   belong in one final parenthesized suffix.
+4. Read the current protection, preserve every unrelated required check and setting,
+   and replace only `policy-verification / policy-verification` after the new context
+   passes on that exact pull-request head. Restore the old context if cutover cannot complete;
+   restore the old caller and pin before rerunning it.
 5. Retire the old caller and workflow only after the new context is active. Never pin
    a reusable workflow to an unmerged commit or weaken protection to break a cycle.
 

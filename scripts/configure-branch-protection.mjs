@@ -4,7 +4,7 @@ const repository = 'phuongnse/renovate-ops';
 const protection = {
   required_status_checks: {
     strict: true,
-    contexts: ['validate', 'policy-verification / policy-verification'],
+    contexts: ['Validate operations', 'Policy verification / Shared policy'],
   },
   enforce_admins: true,
   required_pull_request_reviews: null,

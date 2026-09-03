@@ -34,6 +34,9 @@ The verifier:
 - binds evidence to full base and head commit SHAs;
 - reviews bounded regular-file changes and rejects credential-shaped content;
 - requires immutable SHA or digest pins for every workflow action;
+- requires every workflow and job to declare an explicit sentence-case display name;
+- requires matrix values in one final parenthesized suffix and the shared-policy
+  caller name `Policy verification`;
 - validates draft, owner-authorized Renovate and process-adoption contracts;
 - never receives consumer secrets or a write token;
 - emits retained JSON evidence identifying the verifier commit.
@@ -42,6 +45,12 @@ The verifier:
 Changes to the verifier are checked by the previously pinned verifier revision and
 semantically reviewed through the normal lifecycle. This creates a forward
 static trust chain without allowing the policy verifier to approve itself.
+
+For this deterministic contract, sentence case means an ASCII uppercase first
+letter; established acronyms and proper names remain valid. A matrix job uses
+`Base (${{ matrix.axis }})` or `Base (${{ matrix.axis }}, Label ${{ matrix.other }})`.
+The reusable job is named `Shared policy`, distinct from its required caller, so the
+published context is `Policy verification / Shared policy`.
 
 Repository CI prepares validator dependencies under a separate locked boundary:
 `npm ci --ignore-scripts` materializes packages, the exact `allowScripts` policy
@@ -56,7 +65,7 @@ Each repository owns and applies its own default-branch protection. Steady state
 
 - pull requests with strict, up-to-date required checks;
 - the repository's complete CI surface;
-- `policy-verification` from the pinned reusable workflow;
+- `Policy verification / Shared policy` from the pinned reusable workflow;
 - resolved conversations and linear history;
 - protection for administrators;
 - no force pushes, branch deletion, direct pushes, or broad bypass actor;
