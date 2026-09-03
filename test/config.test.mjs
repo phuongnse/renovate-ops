@@ -6,34 +6,23 @@ import test from 'node:test';
 import config from '../config.cjs';
 
 const root = new URL('../', import.meta.url);
+const readText = async (url) => (await readFile(url, 'utf8')).replaceAll('\r\n', '\n');
 const renovateConfig = JSON.parse(
   await readFile(new URL('.github/renovate.json5', root)),
 );
 const packageDocument = JSON.parse(await readFile(new URL('package.json', root)));
 const processManifest = JSON.parse(await readFile(new URL('.process/project.json', root)));
-const processRequirements = await readFile(new URL('requirements/process.txt', root), 'utf8');
-const npmConfig = await readFile(new URL('.npmrc', root), 'utf8');
+const processRequirements = await readText(new URL('requirements/process.txt', root));
+const npmConfig = await readText(new URL('.npmrc', root));
 const manifest = JSON.parse(await readFile(new URL('github-app-manifest.json', root)));
-const workflow = await readFile(new URL('.github/workflows/renovate.yml', root), 'utf8');
-const branchProtection = await readFile(
-  new URL('scripts/configure-branch-protection.mjs', root),
-  'utf8',
-);
-const manifestServer = await readFile(
-  new URL('scripts/github-app-manifest-server.mjs', root),
-  'utf8',
-);
-const policyWorkflow = await readFile(
-  new URL('.github/workflows/policy-verification.yml', root),
-  'utf8',
-);
-const ciWorkflow = await readFile(new URL('.github/workflows/ci.yml', root), 'utf8');
-const readme = await readFile(new URL('README.md', root), 'utf8');
-const runbook = await readFile(new URL('docs/RUNBOOK.md', root), 'utf8');
-const validationRuntime = await readFile(
-  new URL('scripts/verify-validation-runtime.mjs', root),
-  'utf8',
-);
+const workflow = await readText(new URL('.github/workflows/renovate.yml', root));
+const branchProtection = await readText(new URL('scripts/configure-branch-protection.mjs', root));
+const manifestServer = await readText(new URL('scripts/github-app-manifest-server.mjs', root));
+const policyWorkflow = await readText(new URL('.github/workflows/policy-verification.yml', root));
+const ciWorkflow = await readText(new URL('.github/workflows/ci.yml', root));
+const readme = await readText(new URL('README.md', root));
+const runbook = await readText(new URL('docs/RUNBOOK.md', root));
+const validationRuntime = await readText(new URL('scripts/verify-validation-runtime.mjs', root));
 const canonicalPipCompileCommand =
   'pip-compile --generate-hashes --no-emit-index-url --output-file=requirements/process.txt --strip-extras requirements/process.in';
 
@@ -55,8 +44,13 @@ test('validation dependency scripts are exact, denied by default, and setup-owne
   const action = processManifest.setup.find(
     ({ id }) => id === 'prepare-validation-runtime',
   );
-  assert.deepEqual(action.run, ['npm', 'rebuild', 're2']);
+  assert.deepEqual(action.run, [
+    'node',
+    'scripts/verify-validation-runtime.mjs',
+    '--prepare',
+  ]);
   assert.equal(action.timeoutSeconds, 300);
+  assert.match(validationRuntime, /spawnSync\(process\.execPath, \[npmCli, 'rebuild', 're2'\]/);
   assert.match(validationRuntime, /node_modules\/re2\/build\/Release\/re2\.node/);
   assert.doesNotMatch(validationRuntime, /RENOVATE_X_IGNORE_RE2/);
 

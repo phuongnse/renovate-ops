@@ -40,6 +40,8 @@ the anchored managed adoption runner; every other command remains denied.
 1. Run `npm ci --ignore-scripts`, then
    `processctl setup --project-root . --profile review --apply --allow project-files`,
    then `npm run check`.
+   Setup invokes npm's JavaScript CLI through the native Node executable and fails if
+   that CLI is not a unique regular file in the Node distribution.
 2. Create the public repository and push this reviewed source.
 3. Run `npm run bootstrap:protect`. Required CI, immutable policy verification, code ownership, and immutable history are production preconditions. Semantic checkpoint review remains a separate pre-PR engineering-process gate.
 4. Run `node scripts/github-app-manifest-server.mjs` and open the printed localhost URL.

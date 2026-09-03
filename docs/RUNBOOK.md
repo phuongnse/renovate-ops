@@ -16,6 +16,8 @@ or private-repository data in public logs or incident comments.
 Before local validation or CI profile execution, run `npm ci --ignore-scripts` and
 then `processctl setup --project-root . --profile review --apply --allow
 project-files`. The setup action rebuilds only exact policy-approved `re2`; the
+native Node entrypoint resolves npm only inside the Node distribution and rejects a
+missing or ambiguous CLI instead of selecting a shell wrapper. The
 environment probe must report `Renovate validation runtime ready`. Treat a missing
 `re2.node`, install-script inventory drift, runtime import failure, or any Renovate
 RE2 fallback diagnostic as deterministic failure. Never use

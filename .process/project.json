@@ -45,9 +45,9 @@
     {
       "id": "prepare-validation-runtime",
       "run": [
-        "npm",
-        "rebuild",
-        "re2"
+        "node",
+        "scripts/verify-validation-runtime.mjs",
+        "--prepare"
       ],
       "timeoutSeconds": 300
     }
