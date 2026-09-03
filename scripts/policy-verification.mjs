@@ -1,6 +1,7 @@
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { parseDocument } from 'yaml';
 
 import {
   ADOPTION_ALLOWED_COMMAND,
@@ -103,37 +104,41 @@ function workflowFiles(root, sha) {
   return files;
 }
 
-function parseDisplayName(raw, location) {
-  const source = raw.trim();
-  const singleQuoted = source.match(/^'((?:[^']|'')*)'(?:\s+#.*)?$/);
-  const doubleQuoted = source.match(/^("(?:[^"\\]|\\.)*")(?:\s+#.*)?$/);
-  let name;
-  if (singleQuoted) {
-    name = singleQuoted[1].replaceAll("''", "'");
-  } else if (doubleQuoted) {
-    try {
-      name = JSON.parse(doubleQuoted[1]);
-    } catch {
-      throw new Error(`${location}: display name must be a plain one-line string`);
-    }
-  } else {
-    name = source.replace(/\s+#.*$/, '').trimEnd();
-    if (['>', '|', '&', '*', '!', '[', '{'].some((prefix) => name.startsWith(prefix))
-      || name.includes(': ')) {
-      throw new Error(`${location}: display name must be a plain one-line string`);
-    }
-  }
-  if (!name || name !== name.trim() || /[\0-\x1f\x7f]/.test(name)) {
-    throw new Error(`${location}: display name must be a non-empty one-line string`);
-  }
-  return name;
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function assertDisplayName(name, location) {
+function parseWorkflow(root, headSha, file) {
+  const document = parseDocument(blobAt(root, headSha, file).toString('utf8'), {
+    prettyErrors: false,
+    strict: true,
+    uniqueKeys: true,
+  });
+  const problem = document.errors[0] ?? document.warnings[0];
+  if (problem) throw new Error(`${file}: invalid workflow YAML: ${problem.message}`);
+  let workflow;
+  try {
+    workflow = document.toJS({ maxAliasCount: 100 });
+  } catch (error) {
+    throw new Error(`${file}: invalid workflow YAML: ${error.message}`);
+  }
+  if (!isRecord(workflow)) throw new Error(`${file}: workflow must be a mapping`);
+  return workflow;
+}
+
+function assertDisplayName(name, location, matrixJob = false) {
+  if (typeof name !== 'string' || !name || name !== name.trim()
+    || /[\0-\x1f\x7f]/.test(name)) {
+    throw new Error(`${location}: display name must be a non-empty one-line string`);
+  }
   if (!/^[A-Z]/.test(name)) {
     throw new Error(`${location}: display name must be sentence case`);
   }
-  if (!/\$\{\{\s*matrix(?:\.|\[)/.test(name)) return;
+  const referencesMatrix = /\$\{\{\s*matrix(?:\.|\[)/.test(name);
+  if (matrixJob && !referencesMatrix) {
+    throw new Error(`${location}: matrix job display name must include its matrix values`);
+  }
+  if (!referencesMatrix) return;
   const suffix = name.match(/ \(([^()]*)\)$/);
   const item = /^(?:[A-Z][A-Za-z0-9 ._-]* )?\$\{\{ matrix\.[A-Za-z_][A-Za-z0-9_-]* \}\}$/;
   if (
@@ -147,64 +152,51 @@ function assertDisplayName(name, location) {
   }
 }
 
-function assertWorkflowNames(root, headSha, repository) {
-  let foundSharedPolicyCallee = false;
-  for (const file of workflowFiles(root, headSha)) {
-    const lines = blobAt(root, headSha, file).toString('utf8').split(/\r?\n/);
-    const workflowNames = lines
-      .map((line, index) => ({ index, match: line.match(/^name:\s*(.*)$/) }))
-      .filter(({ match }) => match);
-    if (workflowNames.length !== 1) {
-      throw new Error(`${file}: workflow must declare exactly one display name`);
-    }
-    const workflowName = parseDisplayName(
-      workflowNames[0].match[1], `${file}:${workflowNames[0].index + 1}`,
-    );
-    assertDisplayName(workflowName, `${file}:${workflowNames[0].index + 1}`);
+function assertActionReference(reference, file) {
+  const externalAction =
+    /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[^@\s]+)?@[0-9a-f]{40}$/;
+  const dockerAction = /^docker:\/\/[^\s]+@sha256:[0-9a-f]{64}$/;
+  if (typeof reference !== 'string' || reference !== reference.trim()) {
+    throw new Error(`workflow action reference must be a string: ${file}`);
+  }
+  if (reference.startsWith('./')) return;
+  if (!externalAction.test(reference) && !dockerAction.test(reference)) {
+    throw new Error(`workflow action is not immutably pinned: ${file}: ${reference}`);
+  }
+}
 
-    const jobs = lines
-      .map((line, index) => ({ index, match: line.match(/^jobs:\s*(?:#.*)?$/) }))
-      .filter(({ match }) => match);
-    if (jobs.length !== 1) throw new Error(`${file}: workflow must declare one jobs mapping`);
-    let end = lines.length;
-    for (let index = jobs[0].index + 1; index < lines.length; index += 1) {
-      if (/^[^\s#]/.test(lines[index])) {
-        end = index;
-        break;
-      }
+function assertWorkflowPolicy(root, headSha, repository) {
+  let foundSharedPolicyCallee = false;
+  const files = workflowFiles(root, headSha);
+  if (files.length === 0) throw new Error('repository must declare a workflow');
+  for (const file of files) {
+    const workflow = parseWorkflow(root, headSha, file);
+    assertDisplayName(workflow.name, `${file}: workflow`);
+    if (!isRecord(workflow.jobs) || Object.keys(workflow.jobs).length === 0) {
+      throw new Error(`${file}: workflow must declare a non-empty jobs mapping`);
     }
-    const entries = [];
-    for (let index = jobs[0].index + 1; index < end; index += 1) {
-      const match = lines[index].match(/^  ([A-Za-z_][A-Za-z0-9_-]*):\s*(?:#.*)?$/);
-      if (match) entries.push({ id: match[1], index });
-      else if (/^  \S/.test(lines[index]) && !/^  #/.test(lines[index])) {
-        throw new Error(`${file}:${index + 1}: unsupported jobs mapping entry`);
+    for (const [jobId, job] of Object.entries(workflow.jobs)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(jobId) || !isRecord(job)) {
+        throw new Error(`${file}: invalid job ${jobId}`);
       }
-    }
-    if (entries.length === 0) throw new Error(`${file}: jobs mapping must not be empty`);
-    if (new Set(entries.map(({ id }) => id)).size !== entries.length) {
-      throw new Error(`${file}: job identifiers must be unique`);
-    }
-    for (let offset = 0; offset < entries.length; offset += 1) {
-      const entry = entries[offset];
-      const entryEnd = entries[offset + 1]?.index ?? end;
-      const jobLines = lines.slice(entry.index + 1, entryEnd);
-      const names = jobLines
-        .map((line, index) => ({ index, match: line.match(/^    name:\s*(.*)$/) }))
-        .filter(({ match }) => match);
-      if (names.length !== 1) {
-        throw new Error(`${file}: job ${entry.id} must declare exactly one display name`);
+      const matrixJob = isRecord(job.strategy)
+        && Object.hasOwn(job.strategy, 'matrix');
+      assertDisplayName(job.name, `${file}: job ${jobId}`, matrixJob);
+      const references = [];
+      if (Object.hasOwn(job, 'uses')) references.push(job.uses);
+      if (Object.hasOwn(job, 'steps')) {
+        if (!Array.isArray(job.steps)) throw new Error(`${file}: job ${jobId} steps must be a sequence`);
+        for (const step of job.steps) {
+          if (!isRecord(step)) throw new Error(`${file}: job ${jobId} step must be a mapping`);
+          if (Object.hasOwn(step, 'uses')) references.push(step.uses);
+        }
       }
-      const lineNumber = entry.index + names[0].index + 2;
-      const name = parseDisplayName(names[0].match[1], `${file}:${lineNumber}`);
-      assertDisplayName(name, `${file}:${lineNumber}`);
-      const sharedPolicyCall = jobLines.some((line) => {
-        const match = line.match(/^    uses:\s*['"]?([^'"\s#]+)['"]?/);
-        return match?.[1].startsWith(
+      for (const reference of references) assertActionReference(reference, file);
+      const sharedPolicyCall = typeof job.uses === 'string'
+        && job.uses.startsWith(
           'phuongnse/renovate-ops/.github/workflows/policy-verification.yml@',
         );
-      });
-      if (sharedPolicyCall && name !== sharedPolicyCallerName) {
+      if (sharedPolicyCall && job.name !== sharedPolicyCallerName) {
         throw new Error(
           `${file}: shared policy caller must be named ${sharedPolicyCallerName}`,
         );
@@ -212,9 +204,9 @@ function assertWorkflowNames(root, headSha, repository) {
       if (
         repository === 'phuongnse/renovate-ops'
         && file === '.github/workflows/policy-verification.yml'
-        && entry.id === 'policy-verification'
+        && jobId === 'policy-verification'
       ) {
-        if (name !== sharedPolicyCalleeName) {
+        if (job.name !== sharedPolicyCalleeName) {
           throw new Error(`${file}: reusable job must be named ${sharedPolicyCalleeName}`);
         }
         foundSharedPolicyCallee = true;
@@ -244,24 +236,6 @@ function assertNoCredential(blob, file) {
   ];
   if (patterns.some((pattern) => pattern.test(text))) {
     throw new Error(`credential-shaped content detected: ${file}`);
-  }
-}
-
-function assertActionPins(root, headSha) {
-  const externalAction =
-    /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[^@\s]+)?@[0-9a-f]{40}$/;
-  const dockerAction = /^docker:\/\/[^\s]+@sha256:[0-9a-f]{64}$/;
-  for (const file of workflowFiles(root, headSha)) {
-    const text = blobAt(root, headSha, file).toString('utf8');
-    for (const line of text.split(/\r?\n/)) {
-      const match = line.match(/^\s*(?:-\s*)?uses:\s*['"]?([^'"\s#]+)['"]?/);
-      if (!match) continue;
-      const reference = match[1];
-      if (reference.startsWith('./')) continue;
-      if (!externalAction.test(reference) && !dockerAction.test(reference)) {
-        throw new Error(`workflow action is not immutably pinned: ${file}: ${reference}`);
-      }
-    }
   }
 }
 
@@ -412,8 +386,7 @@ async function main() {
   if (aggregateBytes > maximumAggregateBytes) {
     throw new Error(`reviewed bytes exceed ${maximumAggregateBytes}`);
   }
-  assertWorkflowNames(projectRoot, headSha, repository);
-  assertActionPins(projectRoot, headSha);
+  assertWorkflowPolicy(projectRoot, headSha, repository);
   const adoptionState = await assertRenovateContract(projectRoot);
   await assertProcessLock(projectRoot);
   await assertOperationsBoundary(projectRoot, repository, adoptionState);

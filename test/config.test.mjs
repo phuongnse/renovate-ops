@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import config from '../config.cjs';
+import { verifiedMigrationContexts } from '../scripts/configure-branch-protection.mjs';
 
 const root = new URL('../', import.meta.url);
 const readText = async (url) => (await readFile(url, 'utf8')).replaceAll('\r\n', '\n');
@@ -32,6 +33,7 @@ test('validation dependency scripts are exact, denied by default, and setup-owne
     'dtrace-provider': false,
     're2@1.26.1': true,
   });
+  assert.deepEqual(packageDocument.dependencies, { yaml: '2.9.0' });
   assert.equal(npmConfig, 'strict-allow-scripts=true\n');
   assert.equal(processManifest.schemaVersion, 5);
   assert.equal(Object.hasOwn(processManifest, 'environment'), false);
@@ -189,8 +191,10 @@ test('superseded CI semantic-review and adoption-finalizer sources are absent', 
 
 test('trust-root rotation retains proof-before-cutover and restoration guidance', () => {
   assert.match(runbook, /pin self-CI to that exact main commit/i);
-  assert.match(runbook, /Restore the old context if cutover cannot complete/i);
+  assert.match(runbook, /If cutover cannot complete.*--restore-ci-contexts/is);
   assert.match(runbook, /Retire the old caller and workflow only after the new context is active/i);
+  assert.match(runbook, /--migrate-ci-contexts HEAD_SHA/);
+  assert.match(runbook, /--restore-ci-contexts/);
 });
 
 test('runtime and actions are immutable and Docker socket is unavailable', () => {
@@ -230,10 +234,11 @@ test('manifest bootstrap binds the callback to an unguessable state', () => {
 });
 
 test('main protection requires CI, policy verification, and immutable history', () => {
-  assert.match(
-    branchProtection,
-    /contexts: \['Validate operations', 'Policy verification \/ Shared policy'\]/,
-  );
+  assert.match(branchProtection, /currentContexts = \['validate', 'policy-verification \/ policy-verification'\]/);
+  assert.match(branchProtection, /nextContexts = \['Validate operations', 'Policy verification \/ Shared policy'\]/);
+  assert.match(branchProtection, /commits\/\$\{headSha\}\/check-runs\?per_page=100/);
+  assert.match(branchProtection, /check\.head_sha === headSha/);
+  assert.match(branchProtection, /check\.app\?\.slug === 'github-actions'/);
   assert.match(branchProtection, /enforce_admins: true/);
   assert.match(branchProtection, /required_pull_request_reviews: null/);
   assert.match(branchProtection, /required_linear_history: true/);
@@ -242,8 +247,36 @@ test('main protection requires CI, policy verification, and immutable history', 
   assert.match(branchProtection, /allow_deletions: false/);
 });
 
+test('CI context migration requires both exact-head GitHub Actions checks', () => {
+  const headSha = 'a'.repeat(40);
+  const checks = ['Validate operations', 'Policy verification / Shared policy'].map((name) => ({
+    app: { slug: 'github-actions' },
+    conclusion: 'success',
+    head_sha: headSha,
+    name,
+    status: 'completed',
+  }));
+  assert.deepEqual(verifiedMigrationContexts(headSha, checks), [
+    'Validate operations',
+    'Policy verification / Shared policy',
+  ]);
+  assert.throws(() => verifiedMigrationContexts('short', checks), /full SHA/);
+  for (const invalid of [
+    checks.slice(1),
+    checks.map((check) => ({ ...check, head_sha: 'b'.repeat(40) })),
+    checks.map((check) => ({ ...check, app: { slug: 'other' } })),
+    checks.map((check) => ({ ...check, conclusion: 'failure' })),
+  ]) {
+    assert.throws(
+      () => verifiedMigrationContexts(headSha, invalid),
+      /lacks successful required contexts/,
+    );
+  }
+});
+
 test('policy verification resolves verifier code from the exact Stage A main SHA', () => {
   assert.match(policyWorkflow, /policy-verification:\n    name: Shared policy\n/);
+  assert.match(policyWorkflow, /npm ci --ignore-scripts --omit=dev/);
   assert.match(policyWorkflow, /permissions:\n  contents: read/);
   assert.match(policyWorkflow, /repository: \$\{\{ job\.workflow_repository \}\}/);
   assert.match(policyWorkflow, /ref: \$\{\{ job\.workflow_sha \}\}/);

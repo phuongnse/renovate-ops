@@ -46,6 +46,12 @@ Changes to the verifier are checked by the previously pinned verifier revision a
 semantically reviewed through the normal lifecycle. This creates a forward
 static trust chain without allowing the policy verifier to approve itself.
 
+The verifier parses complete workflow documents with exact `yaml@2.9.0`, installed
+without lifecycle scripts from the immutable lock. Quoted and flow mappings,
+indentation choices, anchors, and aliases therefore retain their YAML meaning;
+duplicate keys, malformed documents, non-string names, and excessive alias expansion
+fail closed.
+
 For this deterministic contract, sentence case means an ASCII uppercase first
 letter; established acronyms and proper names remain valid. A matrix job uses
 `Base (${{ matrix.axis }})` or `Base (${{ matrix.axis }}, Label ${{ matrix.other }})`.

@@ -77,6 +77,10 @@ jobs:
         with:
           node-version: 24.18.0
 
+      - name: Install immutable workflow parser
+        working-directory: trusted-verifier
+        run: npm ci --ignore-scripts --omit=dev
+
       - name: Verify immutable policy boundary
         env:
           TRUSTED_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
