@@ -3,8 +3,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const repository = 'phuongnse/renovate-ops';
-const currentContexts = ['validate', 'policy-verification / policy-verification'];
-const nextContexts = ['Validate operations', 'Policy verification / Shared policy'];
+const legacyContexts = ['validate', 'policy-verification / policy-verification'];
+const currentContexts = ['Validate operations', 'Policy verification / Shared policy'];
 const statusChecksPath = `repos/${repository}/branches/main/protection/required_status_checks`;
 
 function gh(args, input) {
@@ -107,8 +107,8 @@ function migrate(mode, pullRequestNumber, headSha) {
     `repos/${repository}/pulls/${pullRequestNumber}`,
   ]));
   assertLivePullRequest(pullRequest, pullRequestNumber, headSha);
-  const targetNames = mode === '--migrate-ci-contexts' ? nextContexts : currentContexts;
-  const sourceNames = mode === '--migrate-ci-contexts' ? currentContexts : nextContexts;
+  const targetNames = mode === '--migrate-ci-contexts' ? currentContexts : legacyContexts;
+  const sourceNames = mode === '--migrate-ci-contexts' ? legacyContexts : currentContexts;
   const checkRuns = JSON.parse(gh([
     'api',
     `repos/${repository}/commits/${headSha}/check-runs?per_page=100`,

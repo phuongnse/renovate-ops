@@ -12,8 +12,8 @@ Every default-branch change passes three separate control planes:
    human to semantically review the exact verified checkpoint.
 2. Repository-owned build, test, and contract checks verify project behavior.
 3. The immutable reusable workflow in this repository publishes a
-   `policy-verification` check and bounded static evidence from a clean, read-only
-   runner.
+   `Policy verification / Shared policy` check and bounded static evidence from a
+   clean, read-only runner.
 
 The merge button becomes eligible only after lifecycle review and both GitHub control
 planes pass. Adoption and release pull requests remain drafts until the owner
