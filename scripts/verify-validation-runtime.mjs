@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -26,6 +27,60 @@ const EXPECTED_INSTALL_SCRIPTS = Object.freeze({
 
 function stableEntries(value) {
   return Object.entries(value ?? {}).sort(([left], [right]) => left.localeCompare(right));
+}
+
+export function npmCliCandidates(executable, platform) {
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const executableRoot = paths.dirname(executable);
+  return platform === 'win32'
+    ? [paths.join(executableRoot, 'node_modules', 'npm', 'bin', 'npm-cli.js')]
+    : [
+        paths.join(executableRoot, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        paths.join(executableRoot, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+      ];
+}
+
+export function isWithinNodeDistribution(distributionRoot, candidate, platform) {
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const relative = paths.relative(distributionRoot, candidate);
+  return relative !== ''
+    && !paths.isAbsolute(relative)
+    && relative !== '..'
+    && !relative.startsWith(`..${paths.sep}`);
+}
+
+export async function resolveNpmCli(
+  executable = process.execPath,
+  platform = process.platform,
+) {
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const canonicalExecutable = await realpath(executable);
+  const distributionRoot = platform === 'win32'
+    ? paths.dirname(canonicalExecutable)
+    : paths.resolve(paths.dirname(canonicalExecutable), '..');
+  const matches = [];
+  let escaped = false;
+  for (const candidate of npmCliCandidates(canonicalExecutable, platform)) {
+    try {
+      const metadata = await lstat(candidate);
+      if (!metadata.isFile() || metadata.isSymbolicLink()) continue;
+      const canonicalCandidate = await realpath(candidate);
+      if (!isWithinNodeDistribution(distributionRoot, canonicalCandidate, platform)) {
+        escaped = true;
+        continue;
+      }
+      matches.push(canonicalCandidate);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  if (escaped) throw new Error('npm CLI escapes the native Node distribution');
+  if (matches.length !== 1) {
+    throw new Error(
+      `expected one regular npm CLI in the native Node distribution; found ${matches.length}`,
+    );
+  }
+  return matches[0];
 }
 
 export function validatePolicyAndLock(packageDocument, lockDocument) {
@@ -62,6 +117,16 @@ export function validatePolicyAndLock(packageDocument, lockDocument) {
   }
 }
 
+async function validatePolicyFiles(projectRoot) {
+  const packageDocument = JSON.parse(
+    await readFile(path.join(projectRoot, 'package.json'), 'utf8'),
+  );
+  const lockDocument = JSON.parse(
+    await readFile(path.join(projectRoot, 'package-lock.json'), 'utf8'),
+  );
+  validatePolicyAndLock(packageDocument, lockDocument);
+}
+
 async function requireRegularContainedPath(root, relative, { directory }) {
   let current = root;
   for (const segment of relative.split('/')) {
@@ -84,13 +149,7 @@ async function requireRegularContainedPath(root, relative, { directory }) {
 }
 
 export async function verifyValidationRuntime(projectRoot) {
-  const packageDocument = JSON.parse(
-    await readFile(path.join(projectRoot, 'package.json'), 'utf8'),
-  );
-  const lockDocument = JSON.parse(
-    await readFile(path.join(projectRoot, 'package-lock.json'), 'utf8'),
-  );
-  validatePolicyAndLock(packageDocument, lockDocument);
+  await validatePolicyFiles(projectRoot);
 
   const re2Root = await requireRegularContainedPath(
     projectRoot,
@@ -115,10 +174,30 @@ export async function verifyValidationRuntime(projectRoot) {
   }
 }
 
+export async function prepareValidationRuntime(projectRoot) {
+  await validatePolicyFiles(projectRoot);
+  const npmCli = await resolveNpmCli();
+  const result = spawnSync(process.execPath, [npmCli, 'rebuild', 're2'], {
+    cwd: projectRoot,
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const outcome = result.signal ? `signal ${result.signal}` : `exit code ${result.status}`;
+    throw new Error(`npm rebuild re2 failed with ${outcome}`);
+  }
+  await verifyValidationRuntime(projectRoot);
+}
+
 const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;
 if (invokedPath === import.meta.url) {
   const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  await verifyValidationRuntime(projectRoot);
+  if (process.argv.length > 3 || (process.argv[2] && process.argv[2] !== '--prepare')) {
+    throw new Error('usage: verify-validation-runtime.mjs [--prepare]');
+  }
+  if (process.argv[2] === '--prepare') await prepareValidationRuntime(projectRoot);
+  else await verifyValidationRuntime(projectRoot);
   process.stdout.write('Renovate validation runtime ready\n');
 }
 
