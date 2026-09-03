@@ -4,7 +4,12 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import config from '../config.cjs';
-import { verifiedMigrationContexts } from '../scripts/configure-branch-protection.mjs';
+import {
+  assertLivePullRequest,
+  assertMigrationArguments,
+  replaceRequiredChecks,
+  verifiedMigrationChecks,
+} from '../scripts/configure-branch-protection.mjs';
 
 const root = new URL('../', import.meta.url);
 const readText = async (url) => (await readFile(url, 'utf8')).replaceAll('\r\n', '\n');
@@ -191,9 +196,9 @@ test('superseded CI semantic-review and adoption-finalizer sources are absent', 
 
 test('trust-root rotation retains proof-before-cutover and restoration guidance', () => {
   assert.match(runbook, /pin self-CI to that exact main commit/i);
-  assert.match(runbook, /If cutover cannot complete.*--restore-ci-contexts/is);
+  assert.match(runbook, /If\s+cutover cannot complete.*--restore-ci-contexts/is);
   assert.match(runbook, /Retire the old caller and workflow only after the new context is active/i);
-  assert.match(runbook, /--migrate-ci-contexts HEAD_SHA/);
+  assert.match(runbook, /--migrate-ci-contexts PR_NUMBER HEAD_SHA/);
   assert.match(runbook, /--restore-ci-contexts/);
 });
 
@@ -247,20 +252,37 @@ test('main protection requires CI, policy verification, and immutable history', 
   assert.match(branchProtection, /allow_deletions: false/);
 });
 
-test('CI context migration requires both exact-head GitHub Actions checks', () => {
+test('CI context migration binds a live PR and preserves unrelated checks', () => {
   const headSha = 'a'.repeat(40);
   const checks = ['Validate operations', 'Policy verification / Shared policy'].map((name) => ({
-    app: { slug: 'github-actions' },
+    app: { id: 15368, slug: 'github-actions' },
     conclusion: 'success',
     head_sha: headSha,
     name,
     status: 'completed',
   }));
-  assert.deepEqual(verifiedMigrationContexts(headSha, checks), [
-    'Validate operations',
-    'Policy verification / Shared policy',
+  const targetChecks = verifiedMigrationChecks(
+    headSha,
+    ['Validate operations', 'Policy verification / Shared policy'],
+    checks,
+  );
+  assert.deepEqual(targetChecks, [
+    { context: 'Validate operations', app_id: 15368 },
+    { context: 'Policy verification / Shared policy', app_id: 15368 },
   ]);
-  assert.throws(() => verifiedMigrationContexts('short', checks), /full SHA/);
+  const pullRequest = {
+    number: 39,
+    state: 'open',
+    base: { ref: 'main', repo: { full_name: 'PhuongNSE/Renovate-Ops' } },
+    head: { sha: headSha, repo: { full_name: 'phuongnse/renovate-ops' } },
+  };
+  assert.doesNotThrow(() => assertLivePullRequest(pullRequest, '39', headSha));
+  assertMigrationArguments('39', headSha);
+  assert.throws(() => assertMigrationArguments('39', 'main'), /full SHA/);
+  assert.throws(
+    () => assertLivePullRequest({ ...pullRequest, state: 'closed' }, '39', headSha),
+    /current head of an open same-repository PR/,
+  );
   for (const invalid of [
     checks.slice(1),
     checks.map((check) => ({ ...check, head_sha: 'b'.repeat(40) })),
@@ -268,10 +290,56 @@ test('CI context migration requires both exact-head GitHub Actions checks', () =
     checks.map((check) => ({ ...check, conclusion: 'failure' })),
   ]) {
     assert.throws(
-      () => verifiedMigrationContexts(headSha, invalid),
+      () => verifiedMigrationChecks(
+        headSha,
+        ['Validate operations', 'Policy verification / Shared policy'],
+        invalid,
+      ),
       /lacks successful required contexts/,
     );
   }
+  const current = {
+    strict: true,
+    checks: [
+      { context: 'validate', app_id: 15368 },
+      { context: 'policy-verification / policy-verification', app_id: 15368 },
+      { context: 'Unrelated security gate', app_id: 42 },
+    ],
+  };
+  const update = replaceRequiredChecks(
+    current,
+    ['validate', 'policy-verification / policy-verification'],
+    targetChecks,
+  );
+  assert.deepEqual(update, {
+    strict: true,
+    checks: [
+      { context: 'Unrelated security gate', app_id: 42 },
+      ...targetChecks,
+    ],
+  });
+  assert.deepEqual(
+    replaceRequiredChecks(
+      update,
+      ['validate', 'policy-verification / policy-verification'],
+      targetChecks,
+    ),
+    update,
+  );
+  assert.throws(
+    () => replaceRequiredChecks(
+      { strict: true, checks: [current.checks[0], targetChecks[0]] },
+      ['validate', 'policy-verification / policy-verification'],
+      targetChecks,
+    ),
+    /complete migration state/,
+  );
+  const migrateBody = branchProtection.slice(branchProtection.indexOf('function migrate'));
+  assert.ok(
+    migrateBody.indexOf('assertMigrationArguments(pullRequestNumber, headSha);')
+      < migrateBody.indexOf('pulls/${pullRequestNumber}'),
+  );
+  assert.match(migrateBody, /--method', 'PATCH', statusChecksPath/);
 });
 
 test('policy verification resolves verifier code from the exact Stage A main SHA', () => {

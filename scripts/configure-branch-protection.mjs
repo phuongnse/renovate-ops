@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 const repository = 'phuongnse/renovate-ops';
 const currentContexts = ['validate', 'policy-verification / policy-verification'];
 const nextContexts = ['Validate operations', 'Policy verification / Shared policy'];
+const statusChecksPath = `repos/${repository}/branches/main/protection/required_status_checks`;
 
 function gh(args, input) {
   const result = spawnSync('gh', args, {
@@ -21,39 +22,65 @@ function gh(args, input) {
   return result.stdout;
 }
 
-export function verifiedMigrationContexts(headSha, checks) {
+export function assertMigrationArguments(pullRequestNumber, headSha) {
+  if (!/^[1-9][0-9]*$/.test(pullRequestNumber)
+    || !Number.isSafeInteger(Number(pullRequestNumber))) {
+    throw new Error('migration pull request number must be a positive integer');
+  }
   if (!/^[0-9a-f]{40}$/.test(headSha)) throw new Error('migration head must be a full SHA');
-  const successful = new Set(
-    checks
-      .filter((check) => check.head_sha === headSha
-        && check.app?.slug === 'github-actions'
-        && check.status === 'completed'
-        && check.conclusion === 'success')
-      .map((check) => check.name),
-  );
-  const missing = nextContexts.filter((name) => !successful.has(name));
+}
+
+export function assertLivePullRequest(pullRequest, pullRequestNumber, headSha) {
+  if (
+    pullRequest.number !== Number(pullRequestNumber)
+    || pullRequest.state !== 'open'
+    || pullRequest.base?.ref !== 'main'
+    || pullRequest.base?.repo?.full_name?.toLowerCase() !== repository
+    || pullRequest.head?.repo?.full_name?.toLowerCase() !== repository
+    || pullRequest.head?.sha !== headSha
+  ) {
+    throw new Error('migration target must be the current head of an open same-repository PR to main');
+  }
+}
+
+export function verifiedMigrationChecks(headSha, contextNames, checks) {
+  if (!Array.isArray(checks)) throw new Error('check-runs response must contain an array');
+  const required = contextNames.map((name) => checks.find((check) =>
+    check.name === name
+    && check.head_sha === headSha
+    && check.app?.slug === 'github-actions'
+    && Number.isSafeInteger(check.app.id)
+    && check.app.id > 0
+    && check.status === 'completed'
+    && check.conclusion === 'success'));
+  const missing = contextNames.filter((_, index) => !required[index]);
   if (missing.length > 0) {
     throw new Error(`migration head lacks successful required contexts: ${missing.join(', ')}`);
   }
-  return [...nextContexts];
+  return required.map((check) => ({ context: check.name, app_id: check.app.id }));
 }
 
-function main() {
-  const args = process.argv.slice(2);
-  let contexts = currentContexts;
-  if (args[0] === '--migrate-ci-contexts' && args.length === 2) {
-    const headSha = args[1];
-    const report = JSON.parse(gh([
-      'api',
-      `repos/${repository}/commits/${headSha}/check-runs?per_page=100`,
-    ]));
-    contexts = verifiedMigrationContexts(headSha, report.check_runs);
-  } else if (!(args.length === 0 || (args[0] === '--restore-ci-contexts' && args.length === 1))) {
-    throw new Error(
-      'usage: configure-branch-protection.mjs [--migrate-ci-contexts HEAD_SHA|--restore-ci-contexts]',
-    );
+export function replaceRequiredChecks(current, sourceNames, targetChecks) {
+  if (current?.strict !== true || !Array.isArray(current.checks)) {
+    throw new Error('current required status checks must be strict and expose check identities');
   }
+  const source = new Set(sourceNames);
+  const target = new Set(targetChecks.map(({ context }) => context));
+  const sourcePresent = sourceNames.every((name) =>
+    current.checks.some((check) => check.context === name));
+  const targetPresent = targetChecks.every(({ context, app_id: appId }) =>
+    current.checks.some((check) => check.context === context && check.app_id === appId));
+  const hasSource = current.checks.some((check) => source.has(check.context));
+  const hasTarget = current.checks.some((check) => target.has(check.context));
+  if (!((sourcePresent && !hasTarget) || (!hasSource && targetPresent))) {
+    throw new Error('required status checks are not in one complete migration state');
+  }
+  const unrelated = current.checks.filter((check) =>
+    !source.has(check.context) && !target.has(check.context));
+  return { strict: true, checks: [...unrelated, ...targetChecks] };
+}
 
+function configureAll(contexts) {
   const protection = {
     required_status_checks: { strict: true, contexts },
     enforce_admins: true,
@@ -71,7 +98,48 @@ function main() {
     ['api', '--method', 'PUT', `repos/${repository}/branches/main/protection`, '--input', '-'],
     JSON.stringify(protection),
   );
-  process.stdout.write(`Protected main with required contexts: ${contexts.join(', ')}.\n`);
+}
+
+function migrate(mode, pullRequestNumber, headSha) {
+  assertMigrationArguments(pullRequestNumber, headSha);
+  const pullRequest = JSON.parse(gh([
+    'api',
+    `repos/${repository}/pulls/${pullRequestNumber}`,
+  ]));
+  assertLivePullRequest(pullRequest, pullRequestNumber, headSha);
+  const targetNames = mode === '--migrate-ci-contexts' ? nextContexts : currentContexts;
+  const sourceNames = mode === '--migrate-ci-contexts' ? currentContexts : nextContexts;
+  const checkRuns = JSON.parse(gh([
+    'api',
+    `repos/${repository}/commits/${headSha}/check-runs?per_page=100`,
+  ])).check_runs;
+  const targetChecks = verifiedMigrationChecks(headSha, targetNames, checkRuns);
+  const current = JSON.parse(gh(['api', statusChecksPath]));
+  const update = replaceRequiredChecks(current, sourceNames, targetChecks);
+  assertLivePullRequest(
+    JSON.parse(gh(['api', `repos/${repository}/pulls/${pullRequestNumber}`])),
+    pullRequestNumber,
+    headSha,
+  );
+  gh(
+    ['api', '--method', 'PATCH', statusChecksPath, '--input', '-'],
+    JSON.stringify(update),
+  );
+  process.stdout.write(`Migrated required contexts for PR #${pullRequestNumber} at ${headSha}.\n`);
+}
+
+function main() {
+  const args = process.argv.slice(2);
+  if (args.length === 0) configureAll(currentContexts);
+  else if (
+    args.length === 3
+    && ['--migrate-ci-contexts', '--restore-ci-contexts'].includes(args[0])
+  ) migrate(...args);
+  else {
+    throw new Error(
+      'usage: configure-branch-protection.mjs [--migrate-ci-contexts|--restore-ci-contexts] PR_NUMBER HEAD_SHA',
+    );
+  }
 }
 
 const invoked = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;

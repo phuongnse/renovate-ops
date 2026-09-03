@@ -165,6 +165,15 @@ function assertActionReference(reference, file) {
   }
 }
 
+function isSharedPolicyReference(reference) {
+  if (typeof reference !== 'string') return false;
+  const target = reference.slice(0, reference.lastIndexOf('@'));
+  const [owner, name, ...workflowPath] = target.split('/');
+  return owner?.toLowerCase() === 'phuongnse'
+    && name?.toLowerCase() === 'renovate-ops'
+    && workflowPath.join('/') === '.github/workflows/policy-verification.yml';
+}
+
 function assertWorkflowPolicy(root, headSha, repository) {
   let foundSharedPolicyCallee = false;
   const files = workflowFiles(root, headSha);
@@ -192,10 +201,7 @@ function assertWorkflowPolicy(root, headSha, repository) {
         }
       }
       for (const reference of references) assertActionReference(reference, file);
-      const sharedPolicyCall = typeof job.uses === 'string'
-        && job.uses.startsWith(
-          'phuongnse/renovate-ops/.github/workflows/policy-verification.yml@',
-        );
+      const sharedPolicyCall = isSharedPolicyReference(job.uses);
       if (sharedPolicyCall && job.name !== sharedPolicyCallerName) {
         throw new Error(
           `${file}: shared policy caller must be named ${sharedPolicyCallerName}`,

@@ -322,6 +322,7 @@ test('policy verifier enforces quoted and spaced uses keys', async (context) => 
     {
       name: 'wrong shared caller',
       caller: 'Wrong caller',
+      repository: 'PhuongNSE/Renovate-Ops',
       reference: checkoutSha,
       expected: /shared policy caller must be named Policy verification/,
     },
@@ -337,7 +338,7 @@ test('policy verifier enforces quoted and spaced uses keys', async (context) => 
           .replace('name: Policy verification', `name: ${item.caller}`)
           .replace(
             `uses: phuongnse/renovate-ops/.github/workflows/policy-verification.yml@${checkoutSha}`,
-            `'uses' : phuongnse/renovate-ops/.github/workflows/policy-verification.yml@${item.reference}`,
+            `'uses' : ${item.repository ?? 'phuongnse/renovate-ops'}/.github/workflows/policy-verification.yml@${item.reference}`,
           ),
       );
       git(root, 'add', '--', '.github/workflows/ci.yml');

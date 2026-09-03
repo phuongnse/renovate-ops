@@ -51,11 +51,12 @@ must approve it before the configured human owner merges it.
    `Policy verification / Shared policy` check on the final checkpoint. Matrix values
    belong in one final parenthesized suffix.
 4. After both `Validate operations` and `Policy verification / Shared policy` pass,
-   run `node scripts/configure-branch-protection.mjs --migrate-ci-contexts HEAD_SHA`.
-   The command requires both successful GitHub Actions checks on that exact head
-   before replacing the old contexts. If cutover cannot complete, run
-   `node scripts/configure-branch-protection.mjs --restore-ci-contexts`, then restore
-   the old caller and pin before rerunning it.
+   run `node scripts/configure-branch-protection.mjs --migrate-ci-contexts PR_NUMBER HEAD_SHA`.
+   The command requires an open same-repository PR to `main`, its current head, and
+   both successful GitHub Actions checks before replacing only the old contexts. If
+   cutover cannot complete, restore the old caller and pin on that PR, wait for both
+   old contexts, then run
+   `node scripts/configure-branch-protection.mjs --restore-ci-contexts PR_NUMBER HEAD_SHA`.
 5. Retire the old caller and workflow only after the new context is active. Never pin
    a reusable workflow to an unmerged commit or weaken protection to break a cycle.
 
