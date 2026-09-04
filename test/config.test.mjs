@@ -239,8 +239,8 @@ test('manifest bootstrap binds the callback to an unguessable state', () => {
 });
 
 test('main protection requires CI, policy verification, and immutable history', () => {
-  assert.match(branchProtection, /currentContexts = \['validate', 'policy-verification \/ policy-verification'\]/);
-  assert.match(branchProtection, /nextContexts = \['Validate operations', 'Policy verification \/ Shared policy'\]/);
+  assert.match(branchProtection, /legacyContexts = \['validate', 'policy-verification \/ policy-verification'\]/);
+  assert.match(branchProtection, /currentContexts = \['Validate operations', 'Policy verification \/ Shared policy'\]/);
   assert.match(branchProtection, /commits\/\$\{headSha\}\/check-runs\?per_page=100/);
   assert.match(branchProtection, /check\.head_sha === headSha/);
   assert.match(branchProtection, /check\.app\?\.slug === 'github-actions'/);
@@ -352,12 +352,13 @@ test('policy verification resolves verifier code from the exact Stage A main SHA
   assert.doesNotMatch(policyWorkflow, /pull_request_target|secrets:\s*inherit/);
   assert.match(
     ciWorkflow,
-    /uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@5fb53c2295c0f62c29d34c8141121b71198769f4/,
+    /uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@38d952b8c94604df10fadc48b6c830a144ea1137/,
   );
   assert.match(
     ciWorkflow,
-    /policy-verification:\n    name: policy-verification\n    if: github\.event_name == 'pull_request'\n    permissions:\n      contents: read\n      pull-requests: read\n    uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@5fb53c2295c0f62c29d34c8141121b71198769f4/,
+    /policy-verification:\n    name: Policy verification\n    if: github\.event_name == 'pull_request'\n    permissions:\n      contents: read\n      pull-requests: read\n    uses: phuongnse\/renovate-ops\/\.github\/workflows\/policy-verification\.yml@38d952b8c94604df10fadc48b6c830a144ea1137/,
   );
+  assert.match(ciWorkflow, /validate:\n    name: Validate operations\n/);
   assert.doesNotMatch(ciWorkflow, /pull-requests: write/);
   assert.doesNotMatch(ciWorkflow, /secrets:\s*inherit/);
   assert.doesNotMatch(ciWorkflow, /independent-review/);
