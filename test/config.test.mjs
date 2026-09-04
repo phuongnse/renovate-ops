@@ -149,6 +149,12 @@ test('production Renovate is activated by a bounded authenticated release event'
   assert.match(workflow, /RENOVATE_ATTEMPT_TWO_LOG: \/tmp\/renovate-production-attempt-2\.ndjson/);
   assert.match(workflow, /"\$RENOVATE_ATTEMPT_ONE_LOG" "\$RENOVATE_CONSUMER_MANIFEST"/);
   assert.match(workflow, /node scripts\/wait-for-renovate-retry\.mjs/);
+  assert.match(workflow, /name: Classify exact published process adoption/);
+  assert.match(workflow, /validate-process-adoption-result\.mjs --classify/);
+  assert.equal(
+    (workflow.match(/steps\.process_adoption_one\.outputs\.status == 'retryable'/g) ?? []).length,
+    3,
+  );
   assert.match(workflow, /"\$RENOVATE_ATTEMPT_TWO_LOG" "\$RENOVATE_CONSUMER_MANIFEST"/);
   assert.equal((workflow.match(/name: Renovate production attempt [12]/g) ?? []).length, 2);
   const childCompileCommand = execFileSync(

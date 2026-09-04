@@ -160,12 +160,25 @@ jobs:
           node scripts/classify-renovate-log.mjs
           "$RENOVATE_ATTEMPT_ONE_LOG" "$RENOVATE_CONSUMER_MANIFEST"
 
+      - name: Classify exact published process adoption
+        id: process_adoption_one
+        if: github.event_name == 'repository_dispatch' && steps.production_attempt_one.outputs.status == 'passed'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_VERSION: ${{ github.event.client_payload.version }}
+          RENOVATE_CONSUMER_JSON: ${{ toJSON(matrix) }}
+        run: node scripts/validate-process-adoption-result.mjs --classify
+
       - name: Wait before the single bounded recovery attempt
-        if: steps.production_attempt_one.outputs.status == 'retryable'
+        if: >-
+          steps.production_attempt_one.outputs.status == 'retryable' ||
+          steps.process_adoption_one.outputs.status == 'retryable'
         run: node scripts/wait-for-renovate-retry.mjs
 
       - name: Renovate production attempt 2
-        if: steps.production_attempt_one.outputs.status == 'retryable'
+        if: >-
+          steps.production_attempt_one.outputs.status == 'retryable' ||
+          steps.process_adoption_one.outputs.status == 'retryable'
         uses: renovatebot/github-action@e09d604f8f803bb527bd8321ed5be06c460b8682 # v46.2.2
         with:
           configurationFile: config.cjs
@@ -181,7 +194,9 @@ jobs:
 
       - name: Validate production attempt 2
         id: production_attempt_two
-        if: steps.production_attempt_one.outputs.status == 'retryable'
+        if: >-
+          steps.production_attempt_one.outputs.status == 'retryable' ||
+          steps.process_adoption_one.outputs.status == 'retryable'
         run: >-
           node scripts/validate-renovate-log.mjs
           "$RENOVATE_ATTEMPT_TWO_LOG" "$RENOVATE_CONSUMER_MANIFEST"
