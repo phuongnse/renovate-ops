@@ -177,6 +177,30 @@ test('exact release classifier rejects a newer candidate without retry', async (
   );
 });
 
+test('exact release classifier rejects a stale dispatch when main is newer', async () => {
+  await assert.rejects(
+    classifyProcessAdoptionResult({
+      consumer,
+      fetchImpl: fetchFixture({ candidateVersion: '1.1.0', mainVersion: '1.2.0' }),
+      releaseVersion: '1.1.1',
+      token,
+    }),
+    /main process source is newer than release 1\.1\.1/,
+  );
+});
+
+test('exact release classifier rejects a malformed main version without retry', async () => {
+  await assert.rejects(
+    classifyProcessAdoptionResult({
+      consumer,
+      fetchImpl: fetchFixture({ candidateVersion: '1.1.0', mainVersion: 'latest' }),
+      releaseVersion: '1.1.1',
+      token,
+    }),
+    /main process source must pin final SemVer/,
+  );
+});
+
 test('exact release classifier rejects inconsistent stale candidate without retry', async () => {
   await assert.rejects(
     classifyProcessAdoptionResult({

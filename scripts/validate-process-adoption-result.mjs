@@ -220,11 +220,19 @@ export async function validateProcessAdoptionResult({
     compiled: false,
     label: `${expected.repository}/requirements/process.in@${expected.checkpoint}`,
   });
+  if (!SEMVER.test(mainBinding.version)) {
+    throw new Error(`${expected.repository} main process source must pin final SemVer`);
+  }
   if (mainBinding.version === releaseVersion) {
     return {
       ...(await validateCandidate(api, expected.repository, expected.checkpoint, releaseVersion)),
       location: 'main',
     };
+  }
+  if (isOlderFinalVersion(releaseVersion, mainBinding.version)) {
+    throw new Error(
+      `${expected.repository} main process source is newer than release ${releaseVersion}`,
+    );
   }
   const head = encodeURIComponent(`phuongnse:${ADOPTION_BRANCH}`);
   const base = encodeURIComponent(expected.defaultBranch);
