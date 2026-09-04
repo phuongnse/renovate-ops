@@ -8,6 +8,9 @@
     ".agents/skills/improve-process/SKILL.md",
     ".agents/skills/plan-change/.engineering-process.json",
     ".agents/skills/plan-change/SKILL.md",
+    ".agents/skills/production-engineering/.engineering-process.json",
+    ".agents/skills/production-engineering/SKILL.md",
+    ".agents/skills/production-engineering/invariants.json",
     ".agents/skills/review-change/.engineering-process.json",
     ".agents/skills/review-change/SKILL.md",
     ".agents/skills/run-change/.engineering-process.json",
@@ -20,17 +23,18 @@
     ".process/adopt-process.py"
   ],
   "process": {
-    "digest": "sha256:a8c59ae64f52942ac9676e9bd89d7481f62b54e7059d533cd8354a61489e6fa9",
+    "digest": "sha256:d410129ceeb4b7fa0a1bb8f4a6b911ab047a33ebae410056b5940d4e46a79b7a",
     "package": "engineering-process",
-    "version": "1.1.2"
+    "version": "1.2.1"
   },
-  "requirementsDigest": "sha256:a27df0f8fc945006ef826488fa9c565cd1dfa9ae38653daa51e855dd5b07d8d3",
+  "requirementsDigest": "sha256:7f526c1b56af0fd8fc9ceca1d23d5b7321042b4a26b49490576020eb3383074d",
   "schemaVersion": 2,
   "skills": [
     "finish-change",
     "implement-change",
     "improve-process",
     "plan-change",
+    "production-engineering",
     "review-change",
     "run-change",
     "start-change",
