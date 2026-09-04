@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 
-import { validateProcessAdoptionResult } from '../scripts/validate-process-adoption-result.mjs';
+import {
+  classifyProcessAdoptionResult,
+  ReleaseNotObservedError,
+  validateProcessAdoptionResult,
+} from '../scripts/validate-process-adoption-result.mjs';
 
 const repository = 'phuongnse/lyric-rail';
 const checkpoint = 'a'.repeat(40);
@@ -33,7 +37,9 @@ function candidate(version, {
   hashAsComment = false,
   headerSuffix = '',
   misplacedHeader = false,
+  lockVersion = version,
   requirementsDigest,
+  requirementsVersion = version,
   sourceExtra = '',
 } = {}) {
   const source = `--only-binary :all:\n\nengineering-process==${version}\n${sourceExtra}`;
@@ -46,7 +52,7 @@ function candidate(version, {
   const requirements = `${header}
 --only-binary :all:
 
-engineering-process==${version} \\
+engineering-process==${requirementsVersion} \\
 ${renderedHashBlock}
 `;
   const digest = requirementsDigest
@@ -55,7 +61,7 @@ ${renderedHashBlock}
     schemaVersion: 2,
     process: {
       package: 'engineering-process',
-      version,
+      version: lockVersion,
       digest: `sha256:${'e'.repeat(64)}`,
     },
     requirementsDigest: digest,
@@ -144,7 +150,84 @@ test('exact release postcondition rejects a stale successful Renovate candidate'
       releaseVersion: '1.1.1',
       token,
     }),
+    (error) => error instanceof ReleaseNotObservedError,
+  );
+});
+
+test('exact release classifier retries one coherent older candidate', async () => {
+  const result = await classifyProcessAdoptionResult({
+    consumer,
+    fetchImpl: fetchFixture({ candidateVersion: '1.1.0' }),
+    releaseVersion: '1.1.1',
+    token,
+  });
+  assert.equal(result.status, 'retryable');
+  assert.equal(result.classification, 'release-not-observed');
+});
+
+test('exact release classifier rejects a newer candidate without retry', async () => {
+  await assert.rejects(
+    classifyProcessAdoptionResult({
+      consumer,
+      fetchImpl: fetchFixture({ candidateVersion: '1.2.0' }),
+      releaseVersion: '1.1.1',
+      token,
+    }),
     /process source must pin exact release 1\.1\.1/,
+  );
+});
+
+test('exact release classifier rejects a stale dispatch when main is newer', async () => {
+  await assert.rejects(
+    classifyProcessAdoptionResult({
+      consumer,
+      fetchImpl: fetchFixture({ candidateVersion: '1.1.0', mainVersion: '1.2.0' }),
+      releaseVersion: '1.1.1',
+      token,
+    }),
+    /main process source is newer than release 1\.1\.1/,
+  );
+});
+
+test('exact release classifier rejects a malformed main version without retry', async () => {
+  await assert.rejects(
+    classifyProcessAdoptionResult({
+      consumer,
+      fetchImpl: fetchFixture({ candidateVersion: '1.1.0', mainVersion: 'latest' }),
+      releaseVersion: '1.1.1',
+      token,
+    }),
+    /main process source must pin final SemVer/,
+  );
+});
+
+test('exact release classifier rejects inconsistent stale candidate without retry', async () => {
+  await assert.rejects(
+    classifyProcessAdoptionResult({
+      consumer,
+      fetchImpl: fetchFixture({
+        candidateOptions: { requirementsVersion: '1.0.9' },
+        candidateVersion: '1.1.0',
+      }),
+      releaseVersion: '1.1.1',
+      token,
+    }),
+    /process requirements must match the source version/,
+  );
+});
+
+test('exact release classifier rejects a stale lock mismatch without retry', async () => {
+  await assert.rejects(
+    classifyProcessAdoptionResult({
+      consumer,
+      fetchImpl: fetchFixture({
+        candidateOptions: { lockVersion: '1.0.9' },
+        candidateVersion: '1.1.0',
+      }),
+      releaseVersion: '1.1.1',
+      token,
+    }),
+    /process lock must match the source version/,
   );
 });
 
