@@ -13,6 +13,7 @@ import {
 
 const root = new URL('../', import.meta.url);
 const readText = async (url) => (await readFile(url, 'utf8')).replaceAll('\r\n', '\n');
+const gitAttributes = await readText(new URL('.gitattributes', root));
 const renovateConfig = JSON.parse(
   await readFile(new URL('.github/renovate.json5', root)),
 );
@@ -31,6 +32,13 @@ const runbook = await readText(new URL('docs/RUNBOOK.md', root));
 const validationRuntime = await readText(new URL('scripts/verify-validation-runtime.mjs', root));
 const canonicalPipCompileCommand =
   'pip-compile --generate-hashes --no-emit-index-url --output-file=requirements/process.txt --strip-extras requirements/process.in';
+
+test('repository keeps tracked text byte-stable across platforms', () => {
+  assert.equal(
+    gitAttributes,
+    '* text=auto eol=lf -working-tree-encoding -filter -ident\n',
+  );
+});
 
 test('validation dependency scripts are exact, denied by default, and setup-owned', () => {
   assert.deepEqual(packageDocument.allowScripts, {
