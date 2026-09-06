@@ -34,8 +34,10 @@ never finalizes process adoption.
 ## Process adoption ownership
 
 Renovate updates the exact package pin and hash lock, runs the single allowlisted
-managed adopter, and commits every declared managed path on
-`automation/renovate/engineering-process*`. The resulting PR remains a draft;
+managed adopter, and commits every declared managed path within the validated
+`branchPrefix`. PR discovery uses the process version change in
+`requirements/process.in` at an immutable head; candidate validation checks the
+compiled lock and managed metadata. The resulting PR remains a draft;
 consumer CI verifies the complete materialized checkpoint and an independent reviewer
 must approve it before the configured human owner merges it.
 
