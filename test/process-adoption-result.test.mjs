@@ -254,6 +254,21 @@ test('a full PR page fails closed instead of claiming uniqueness from a partial 
   }), /listing exceeds bounded discovery/);
 });
 
+test('malformed listing rows cannot be silently discarded beside a valid candidate', async (t) => {
+  const missingRepository = pullRequest();
+  delete missingRepository.head.repo;
+  for (const [label, row] of [['null row', null], ['missing repository', missingRepository]]) {
+    await t.test(label, async () => {
+      await assert.rejects(validateProcessAdoptionResult({
+        consumer,
+        fetchImpl: fetchFixture({ pulls: [row, pullRequest()] }),
+        releaseVersion: '1.1.1',
+        token,
+      }), /malformed pull request metadata/);
+    });
+  }
+});
+
 test('discovery rejects a mutable head or malformed candidate version', async (t) => {
   for (const [options, error] of [
     [{ pulls: [pullRequest({ ref: 'main' })] }, /immutable head SHA/],

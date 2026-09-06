@@ -247,7 +247,12 @@ export async function validateProcessAdoptionResult({
   for (const pull of pulls) {
     if (
       typeof pull?.head?.ref !== 'string'
-      || !pull.head.ref.startsWith(RENOVATE_BRANCH_PREFIX)
+      || (pull.head.repo !== null && typeof pull.head.repo?.full_name !== 'string')
+    ) {
+      throw new Error(`${expected.repository} returned malformed pull request metadata`);
+    }
+    if (
+      !pull.head.ref.startsWith(RENOVATE_BRANCH_PREFIX)
       || pull.head?.repo?.full_name !== expected.repository
     ) continue;
     if (!SHA.test(pull.head.sha)) {
