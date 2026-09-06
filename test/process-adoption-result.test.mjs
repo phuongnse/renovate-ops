@@ -85,13 +85,30 @@ function response(document, status = 200) {
   };
 }
 
+function pullRequest({
+  branch = 'automation/renovate/engineering-process',
+  ref = headSha,
+  baseSha = checkpoint,
+  draft = true,
+} = {}) {
+  return {
+    state: 'open',
+    draft,
+    head: { ref: branch, sha: ref, repo: { full_name: repository } },
+    base: { ref: 'main', sha: baseSha, repo: { full_name: repository } },
+  };
+}
+
 function fetchFixture({
   baseSha = checkpoint,
+  branch = 'automation/renovate/engineering-process',
   candidateOptions = {},
   candidateVersion = '1.1.1',
   draft = true,
   mainVersion = '1.0.1',
   requirementsDigest,
+  pulls,
+  filesByRef = {},
 } = {}) {
   const mainFiles = candidate(mainVersion);
   const branchFiles = candidate(candidateVersion, {
@@ -101,18 +118,18 @@ function fetchFixture({
   return async (rawUrl) => {
     const url = new URL(rawUrl);
     if (url.pathname === `/repos/${repository}/pulls`) {
-      return response([{
-        state: 'open',
-        draft,
-        head: { ref: 'automation/renovate/engineering-process', sha: headSha, repo: { full_name: repository } },
-        base: { ref: 'main', sha: baseSha, repo: { full_name: repository } },
-      }]);
+      const listed = pulls ?? [pullRequest({ branch, baseSha, draft })];
+      const requestedHead = url.searchParams.get('head');
+      return response(requestedHead
+        ? listed.filter((pull) => requestedHead === `phuongnse:${pull.head.ref}`)
+        : listed);
     }
     const prefix = `/repos/${repository}/contents/`;
     if (url.pathname.startsWith(prefix)) {
       const path = url.pathname.slice(prefix.length);
       const ref = url.searchParams.get('ref');
-      const document = ref === checkpoint ? mainFiles[path] : ref === headSha ? branchFiles[path] : null;
+      const document = filesByRef[ref]?.[path]
+        ?? (ref === checkpoint ? mainFiles[path] : ref === headSha ? branchFiles[path] : null);
       if (document) return response(document);
     }
     throw new Error(`unexpected GitHub API request: ${url.pathname}${url.search}`);
@@ -129,6 +146,125 @@ test('exact release postcondition accepts one bound draft adoption candidate', a
   assert.equal(result.location, 'pull-request');
   assert.equal(result.ref, headSha);
   assert.equal(result.version, '1.1.1');
+});
+
+test('process identity comes from the immutable pin, not the branch topic', async (t) => {
+  for (const branch of [
+    'automation/renovate/major-engineering-process',
+    'automation/renovate/tooling-group-2026',
+  ]) {
+    await t.test(branch, async () => {
+      const result = await validateProcessAdoptionResult({
+        consumer,
+        fetchImpl: fetchFixture({ branch, mainVersion: '1.2.6', candidateVersion: '2.0.0' }),
+        releaseVersion: '2.0.0',
+        token,
+      });
+      assert.equal(result.location, 'pull-request');
+      assert.equal(result.ref, headSha);
+      assert.equal(result.version, '2.0.0');
+    });
+  }
+});
+
+test('unrelated pins and branches outside ownership scope do not become candidates', async () => {
+  const otherSha = 'c'.repeat(40);
+  const fork = pullRequest({ ref: 'd'.repeat(40) });
+  fork.head.repo.full_name = 'someone/lyric-rail';
+  const result = await validateProcessAdoptionResult({
+    consumer,
+    fetchImpl: fetchFixture({
+      pulls: [
+        pullRequest({ branch: 'automation/renovate/engineering-process-lookalike', ref: otherSha, draft: false, baseSha: 'f'.repeat(40) }),
+        fork,
+        pullRequest({ branch: 'feature/tooling', ref: 'e'.repeat(40) }),
+        pullRequest(),
+      ],
+      filesByRef: { [otherSha]: candidate('1.0.1') },
+    }),
+    releaseVersion: '1.1.1',
+    token,
+  });
+  assert.equal(result.ref, headSha);
+});
+
+test('a unique exact release takes precedence over other process version proposals', async () => {
+  const older = 'c'.repeat(40);
+  const newer = 'd'.repeat(40);
+  const result = await validateProcessAdoptionResult({
+    consumer,
+    fetchImpl: fetchFixture({
+      pulls: [pullRequest({ ref: older }), pullRequest({ ref: newer }), pullRequest()],
+      filesByRef: { [older]: candidate('1.1.0'), [newer]: candidate('1.2.0') },
+    }),
+    releaseVersion: '1.1.1',
+    token,
+  });
+  assert.equal(result.ref, headSha);
+});
+
+test('an invalid exact release cannot fall back to an older valid draft', async () => {
+  const older = 'c'.repeat(40);
+  await assert.rejects(validateProcessAdoptionResult({
+    consumer,
+    fetchImpl: fetchFixture({
+      pulls: [pullRequest({ ref: older }), pullRequest({ draft: false })],
+      filesByRef: { [older]: candidate('1.1.0') },
+    }),
+    releaseVersion: '1.1.1',
+    token,
+  }), /adoption pull request is not one exact open draft/);
+});
+
+test('duplicate exact candidates and ambiguous older candidates fail without retry', async (t) => {
+  for (const version of ['1.1.1', '1.1.0']) {
+    await t.test(version, async () => {
+      const other = 'c'.repeat(40);
+      await assert.rejects(classifyProcessAdoptionResult({
+        consumer,
+        fetchImpl: fetchFixture({
+          candidateVersion: version,
+          pulls: [pullRequest(), pullRequest({ branch: 'automation/renovate/another-group', ref: other })],
+          filesByRef: { [other]: candidate(version) },
+        }),
+        releaseVersion: '1.1.1',
+        token,
+      }), (error) => !(error instanceof ReleaseNotObservedError)
+        && /must have one open process adoption pull request/.test(error.message));
+    });
+  }
+});
+
+test('an empty or unchanged process selection does not prove adoption', async (t) => {
+  for (const options of [{ pulls: [] }, { candidateVersion: '1.0.1' }]) {
+    await t.test(JSON.stringify(options), async () => {
+      await assert.rejects(validateProcessAdoptionResult({
+        consumer, fetchImpl: fetchFixture(options), releaseVersion: '1.1.1', token,
+      }), /must have one open process adoption pull request/);
+    });
+  }
+});
+
+test('a full PR page fails closed instead of claiming uniqueness from a partial listing', async () => {
+  await assert.rejects(validateProcessAdoptionResult({
+    consumer,
+    fetchImpl: fetchFixture({ pulls: Array.from({ length: 100 }, () => pullRequest()) }),
+    releaseVersion: '1.1.1',
+    token,
+  }), /listing exceeds bounded discovery/);
+});
+
+test('discovery rejects a mutable head or malformed candidate version', async (t) => {
+  for (const [options, error] of [
+    [{ pulls: [pullRequest({ ref: 'main' })] }, /immutable head SHA/],
+    [{ candidateVersion: 'latest' }, /candidate process source must pin final SemVer/],
+  ]) {
+    await t.test(error.source, async () => {
+      await assert.rejects(validateProcessAdoptionResult({
+        consumer, fetchImpl: fetchFixture(options), releaseVersion: '1.1.1', token,
+      }), error);
+    });
+  }
 });
 
 test('exact release postcondition accepts an already adopted main checkpoint', async () => {
@@ -157,7 +293,7 @@ test('exact release postcondition rejects a stale successful Renovate candidate'
 test('exact release classifier retries one coherent older candidate', async () => {
   const result = await classifyProcessAdoptionResult({
     consumer,
-    fetchImpl: fetchFixture({ candidateVersion: '1.1.0' }),
+    fetchImpl: fetchFixture({ candidateVersion: '1.1.0', branch: 'automation/renovate/opaque-group' }),
     releaseVersion: '1.1.1',
     token,
   });

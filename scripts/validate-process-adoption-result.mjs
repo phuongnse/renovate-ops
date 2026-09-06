@@ -2,13 +2,13 @@ import { createHash } from 'node:crypto';
 import { appendFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-import { githubClient } from './discover-consumers.mjs';
+import { githubClient, RENOVATE_BRANCH_PREFIX } from './discover-consumers.mjs';
 import {
   manifestForConsumer,
   MAX_MANIFEST_BYTES,
 } from './validate-consumer-manifest.mjs';
 
-const ADOPTION_BRANCH = 'automation/renovate/engineering-process';
+const MAX_OPEN_PULLS = 100;
 const MAX_FILE_BYTES = 2_000_000;
 const SEMVER = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
 const SHA = /^[0-9a-f]{40}$/;
@@ -189,7 +189,8 @@ function validatePullRequest(pull, consumer) {
     || typeof pull !== 'object'
     || pull.draft !== true
     || pull.state !== 'open'
-    || pull.head?.ref !== ADOPTION_BRANCH
+    || typeof pull.head?.ref !== 'string'
+    || !pull.head.ref.startsWith(RENOVATE_BRANCH_PREFIX)
     || !SHA.test(pull.head?.sha)
     || pull.head?.repo?.full_name !== consumer.repository
     || pull.base?.ref !== consumer.defaultBranch
@@ -234,15 +235,40 @@ export async function validateProcessAdoptionResult({
       `${expected.repository} main process source is newer than release ${releaseVersion}`,
     );
   }
-  const head = encodeURIComponent(`phuongnse:${ADOPTION_BRANCH}`);
   const base = encodeURIComponent(expected.defaultBranch);
   const pulls = await api(
-    `/repos/${expected.repository}/pulls?state=open&head=${head}&base=${base}&per_page=10`,
+    `/repos/${expected.repository}/pulls?state=open&base=${base}&per_page=${MAX_OPEN_PULLS}`,
   );
-  if (!Array.isArray(pulls) || pulls.length !== 1) {
+  // A full page cannot prove that discovery saw every possible match.
+  if (!Array.isArray(pulls) || pulls.length >= MAX_OPEN_PULLS) {
+    throw new Error(`${expected.repository} open pull-request listing exceeds bounded discovery`);
+  }
+  const candidates = [];
+  for (const pull of pulls) {
+    if (
+      typeof pull?.head?.ref !== 'string'
+      || !pull.head.ref.startsWith(RENOVATE_BRANCH_PREFIX)
+      || pull.head?.repo?.full_name !== expected.repository
+    ) continue;
+    if (!SHA.test(pull.head.sha)) {
+      throw new Error(`${expected.repository} pull request must have an immutable head SHA`);
+    }
+    const source = await fileAt(api, expected.repository, 'requirements/process.in', pull.head.sha);
+    const binding = processBinding(source.text, {
+      compiled: false,
+      label: `${expected.repository}/requirements/process.in@${pull.head.sha}`,
+    });
+    if (!SEMVER.test(binding.version)) {
+      throw new Error(`${expected.repository} candidate process source must pin final SemVer`);
+    }
+    if (binding.version !== mainBinding.version) candidates.push({ pull, version: binding.version });
+  }
+  const exact = candidates.filter(({ version }) => version === releaseVersion);
+  const matches = exact.length ? exact : candidates;
+  if (matches.length !== 1) {
     throw new Error(`${expected.repository} must have one open process adoption pull request`);
   }
-  const headSha = validatePullRequest(pulls[0], expected);
+  const headSha = validatePullRequest(matches[0].pull, expected);
   return {
     ...(await validateCandidate(api, expected.repository, headSha, releaseVersion)),
     location: 'pull-request',

@@ -11,6 +11,8 @@ import {
 } from './validate-consumer-manifest.mjs';
 import { classifyProcessAdoptionRule } from './process-adoption-contract.mjs';
 
+export const RENOVATE_BRANCH_PREFIX = 'automation/renovate/';
+
 const API_ROOT = 'https://api.github.com';
 const MAX_API_BYTES = 1_000_000;
 const MAX_AGGREGATE_API_BYTES = 16_000_000;
@@ -117,7 +119,7 @@ export function classifyConsumerIntent(config, label = 'consumer config') {
   if (typeof config.enabled !== 'boolean') throw new Error(`${label}.enabled must be boolean`);
   if (!config.enabled) return 'disabled';
   if (config.draftPR !== true) throw new Error(`${label}.draftPR must be true`);
-  if (config.branchPrefix !== 'automation/renovate/') {
+  if (config.branchPrefix !== RENOVATE_BRANCH_PREFIX) {
     throw new Error(`${label}.branchPrefix is invalid`);
   }
   if (Object.hasOwn(config, 'packageRules') && !Array.isArray(config.packageRules)) {
