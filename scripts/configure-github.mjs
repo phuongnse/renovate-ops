@@ -1,9 +1,12 @@
 import { chmod, readFile, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
+import { loadAppManifest, validateAppName } from './app-name.mjs';
 
 const repository = 'phuongnse/renovate-ops';
+const { name: expectedAppName } = await loadAppManifest();
 const credentialPath = new URL('../.local/github-app.json', import.meta.url);
 const credentials = JSON.parse(await readFile(credentialPath, 'utf8'));
+validateAppName(credentials.name, expectedAppName);
 
 if (!/^Iv[0-9a-z.]+$/i.test(credentials.client_id ?? '')) {
   throw new Error('manifest response does not contain a valid GitHub App client_id');

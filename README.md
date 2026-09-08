@@ -37,6 +37,10 @@ the anchored managed adoption runner; every other command remains denied.
 
 ## Bootstrap
 
+Install `requirements/process.txt` with `--require-hashes` in the active Python
+environment first. Bootstrap uses that environment's `python -I -m engineering_process`.
+The naming integration requires the released 2.2.0 runtime selected by this repository.
+
 1. Run `npm ci --ignore-scripts`, then
    `processctl setup --project-root . --profile review --apply --allow project-files`,
    then `npm run check`.
@@ -55,6 +59,26 @@ the anchored managed adoption runner; every other command remains denied.
 8. Dispatch `Renovate` with `mode=dry-run` and review every selected consumer result.
 9. Follow `docs/CUTOVER.md`; do not let hosted and self-hosted Renovate run in
    production concurrently. Keep production disabled until the dry run is accepted.
+
+### App naming
+
+`.process/automation-name.json` owns the App's owner/role inputs. The process's
+`automation-name@1` default currently produces `phuongnse-renovate-ops`.
+`node scripts/check-app-name.mjs` compares the manifest's actual name to the selected
+renderer result; `--write` regenerates only that local manifest field. The normal
+bootstrap path is read-only. Both paths enforce GitHub's 34-character name limit.
+
+Bootstrap checks the manifest before opening its server and checks the name returned
+by GitHub before storing credentials. Configuration checks the credential name before
+writing GitHub variables/secrets. The required review profile and `npm run check` run
+the same naming check. Renderer failure or name drift stops the operation.
+
+To override the convention, select a consumer-owned definition in
+`.process/standards.json`, regenerate the local name and verify the changed inputs.
+Do not infer App identity or permissions from the name: a live rename requires a
+reviewed migration of provider slugs, sender allowlists and credential bindings.
+GitHub remains responsible for registration availability and uniqueness. See its
+[App naming requirements](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app).
 
 ## Adding a consumer
 
