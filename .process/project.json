@@ -18,6 +18,14 @@
     ],
     "review": [
       {
+        "id": "app-naming",
+        "run": [
+          "node",
+          "scripts/check-app-name.mjs"
+        ],
+        "timeoutSeconds": 60
+      },
+      {
         "id": "global-renovate-config",
         "run": [
           "node",

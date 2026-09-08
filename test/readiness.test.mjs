@@ -47,7 +47,7 @@ test('every operations capability resolves only to required profile checks', () 
   );
   assert.deepEqual(checks, {
     development: ['unit'],
-    review: ['global-renovate-config', 'repository-renovate-config'],
+    review: ['app-naming', 'global-renovate-config', 'repository-renovate-config'],
   });
   for (const profiles of Object.values(expected)) {
     assert.ok(profiles.every((profile) => required.has(profile) && checks[profile].length > 0));

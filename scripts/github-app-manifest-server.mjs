@@ -1,13 +1,13 @@
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
+import { loadAppManifest, validateAppName } from './app-name.mjs';
 
 const host = '127.0.0.1';
 const port = 38917;
-const manifestPath = new URL('../github-app-manifest.json', import.meta.url);
 const credentialDirectory = new URL('../.local/', import.meta.url);
 const credentialPath = new URL('github-app.json', credentialDirectory);
-const manifest = await readFile(manifestPath, 'utf8');
+const { text: manifest, name: expectedAppName } = await loadAppManifest();
 const state = randomBytes(32).toString('hex');
 
 function escapeHtml(value) {
@@ -82,6 +82,7 @@ const server = http.createServer(async (request, response) => {
       if (!conversion.ok) {
         throw new Error(`GitHub returned ${conversion.status}: ${JSON.stringify(payload)}`);
       }
+      validateAppName(payload.name, expectedAppName);
 
       await mkdir(credentialDirectory, { recursive: true, mode: 0o700 });
       await writeFile(credentialPath, `${JSON.stringify(payload, null, 2)}\n`, {
