@@ -23,6 +23,7 @@ module.exports = {
   },
   customEnvVariables: {
     CUSTOM_COMPILE_COMMAND: canonicalPipCompileCommand,
+    PIP_REFRESH_PACKAGE: 'engineering-process',
   },
   allowScripts: false,
   allowPlugins: false,
