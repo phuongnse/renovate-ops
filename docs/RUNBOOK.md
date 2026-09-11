@@ -31,6 +31,14 @@ repositories, config races, other repository results, and non-retryable artifact
 failures stop immediately. A second failure opens or updates the incident. Renovate
 never finalizes process adoption.
 
+Package-manager children receive `PIP_REFRESH_PACKAGE=engineering-process` through
+Renovate's native custom environment. Pip 26.2 and newer revalidate that package's
+Simple metadata while retaining artifact caches; older pip revalidated by default.
+The process installer in CI requests the same refresh explicitly because
+`--isolated` ignores pip environment settings. Consumer CI on older pip can use
+`--no-cache-dir` on its process installation command. A warm cache is not a reason
+to delay every release; exact pin/hash failures remain failures.
+
 ## Process adoption ownership
 
 Renovate updates the exact package pin and hash lock, runs the single allowlisted

@@ -83,6 +83,7 @@ test('global configuration requires one workflow-supplied target', () => {
   assert.deepEqual(config.constraints, { pipTools: '==7.6.1' });
   assert.deepEqual(config.customEnvVariables, {
     CUSTOM_COMPILE_COMMAND: canonicalPipCompileCommand,
+    PIP_REFRESH_PACKAGE: 'engineering-process',
   });
   assert.equal(config.exposeAllEnv, undefined);
   assert.match(workflow, /OPS_TARGET_REPOSITORY: \$\{\{ matrix\.repository \}\}/);
@@ -165,7 +166,7 @@ test('production Renovate is activated by a bounded authenticated release event'
   );
   assert.match(workflow, /"\$RENOVATE_ATTEMPT_TWO_LOG" "\$RENOVATE_CONSUMER_MANIFEST"/);
   assert.equal((workflow.match(/name: Renovate production attempt [12]/g) ?? []).length, 2);
-  const childCompileCommand = execFileSync(
+  const childEnvironment = JSON.parse(execFileSync(
     process.execPath,
     [
       '--input-type=module',
@@ -174,11 +175,18 @@ test('production Renovate is activated by a bounded authenticated release event'
         + 'const { setCustomEnv } = await import("./node_modules/renovate/dist/util/env.js"); '
         + 'const { getChildEnv } = await import("./node_modules/renovate/dist/util/exec/utils.js"); '
         + 'setCustomEnv(config.customEnvVariables); '
-        + 'process.stdout.write(getChildEnv().CUSTOM_COMPILE_COMMAND ?? "");',
+        + 'const child = getChildEnv(); '
+        + 'process.stdout.write(JSON.stringify({ '
+        + 'compileCommand: child.CUSTOM_COMPILE_COMMAND, '
+        + 'refreshPackage: child.PIP_REFRESH_PACKAGE }));',
     ],
     { cwd: new URL('.', root), encoding: 'utf8' },
-  );
-  assert.equal(childCompileCommand, canonicalPipCompileCommand);
+  ));
+  assert.deepEqual(childEnvironment, {
+    compileCommand: canonicalPipCompileCommand,
+    refreshPackage: 'engineering-process',
+  });
+  assert.match(ciWorkflow, /--refresh-package engineering-process/);
   assert.match(workflow, /name: Revalidate consumer intent before execution/);
   assert.match(workflow, /name: Validate exact published process adoption/);
   assert.match(workflow, /if: github\.event_name == 'repository_dispatch'/);
