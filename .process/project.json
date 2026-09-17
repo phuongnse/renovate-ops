@@ -48,7 +48,7 @@
     ]
   },
   "project": "renovate-ops",
-  "schemaVersion": 5,
+  "schemaVersion": 1,
   "setup": [
     {
       "id": "prepare-validation-runtime",
