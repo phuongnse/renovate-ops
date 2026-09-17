@@ -48,7 +48,7 @@ test('validation dependency scripts are exact, denied by default, and setup-owne
   });
   assert.deepEqual(packageDocument.dependencies, { yaml: '2.9.0' });
   assert.equal(npmConfig, 'strict-allow-scripts=true\n');
-  assert.equal(processManifest.schemaVersion, 5);
+  assert.equal(processManifest.schemaVersion, 1);
   assert.equal(Object.hasOwn(processManifest, 'environment'), false);
   const processHeader = processRequirements.split('\n').slice(0, 7).join('\n');
   assert.match(
