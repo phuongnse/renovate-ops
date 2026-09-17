@@ -39,7 +39,7 @@ the anchored managed adoption runner; every other command remains denied.
 
 Install `requirements/process.txt` with `--require-hashes` in the active Python
 environment first. Bootstrap uses that environment's `python -I -m engineering_process`.
-The naming integration requires the released 2.2.0 runtime selected by this repository.
+The naming integration requires the released 3.0.0 runtime selected by this repository.
 
 1. Run `npm ci --ignore-scripts`, then
    `processctl setup --project-root . --profile review --apply --allow project-files`,
