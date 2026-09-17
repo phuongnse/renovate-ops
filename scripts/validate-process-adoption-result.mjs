@@ -113,7 +113,7 @@ function parseLock(text, label) {
     lock === null
     || typeof lock !== 'object'
     || Array.isArray(lock)
-    || lock.schemaVersion !== 2
+    || lock.schemaVersion !== 1
     || lock.process?.package !== 'engineering-process'
     || !SEMVER.test(lock.process?.version)
     || !DIGEST.test(lock.process?.digest)

@@ -58,7 +58,7 @@ ${renderedHashBlock}
   const digest = requirementsDigest
     ?? `sha256:${createHash('sha256').update(requirements).digest('hex')}`;
   const lock = `${JSON.stringify({
-    schemaVersion: 2,
+    schemaVersion: 1,
     process: {
       package: 'engineering-process',
       version: lockVersion,
