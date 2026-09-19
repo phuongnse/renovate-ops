@@ -66,6 +66,35 @@ test('retryable lockfile diagnostics include bounded context and redact credenti
   assert.doesNotMatch(result.diagnostic, /visible-secret/);
 });
 
+test('retryable lockfile diagnostics retain structured child-command errors', () => {
+  const records = [
+    {
+      err: {
+        message: 'pip-compile failed: token=visible-secret',
+        stack: 'Error: pip-compile failed',
+      },
+      msg: 'pip-compile: Failed to run command',
+      repository: repositories[0],
+    },
+    {
+      msg: 'Repository finished',
+      repository: repositories[0],
+      result: 'lockfile-error',
+    },
+    {
+      msg: 'Repository finished',
+      repository: repositories[1],
+      result: 'done',
+    },
+  ];
+
+  const result = classifyRenovateRecords(records, repositories);
+  assert.match(result.diagnostic, /pip-compile: Failed to run command/);
+  assert.match(result.diagnostic, /pip-compile failed/);
+  assert.match(result.diagnostic, /token=\[redacted\]/);
+  assert.doesNotMatch(result.diagnostic, /visible-secret/);
+});
+
 test('Renovate outcomes reject branch artifact errors', () => {
   const records = [
     ...completions(),
