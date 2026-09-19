@@ -156,6 +156,20 @@ test('exact release candidates and foreign branches remain untouched', async (t)
     assert.deepEqual(mutations(calls), []);
   });
 
+  await t.test('candidate equal to main is stale after a newer release', async () => {
+    const { calls, fetchImpl } = fixture({
+      mainVersion: '1.1.0',
+      pulls: [pullRequest({ version: '1.1.0' })],
+      versions: { [headSha]: '1.1.0' },
+    });
+    const result = await reconcileProcessAdoption({
+      consumer, fetchImpl, releaseVersion: '1.2.0', token,
+    });
+    assert.equal(result.status, 'reconciled');
+    assert.equal(result.reconciled[0].previousVersion, '1.1.0');
+    assert.deepEqual(mutations(calls).map(({ method }) => method), ['POST', 'DELETE', 'PATCH']);
+  });
+
   await t.test('foreign branch', async () => {
     const foreign = pullRequest({ headRepository: 'someone/renovate-ops' });
     const { calls, fetchImpl } = fixture({ pulls: [foreign] });

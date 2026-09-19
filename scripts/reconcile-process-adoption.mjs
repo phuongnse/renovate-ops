@@ -73,7 +73,7 @@ function validateAdoptionPullRequest(pull, consumer) {
   };
 }
 
-async function inspectCandidate(api, consumer, pull, mainVersion, releaseVersion) {
+async function inspectCandidate(api, consumer, pull, releaseVersion) {
   const source = await fileAt(
     api,
     consumer.repository,
@@ -91,7 +91,6 @@ async function inspectCandidate(api, consumer, pull, mainVersion, releaseVersion
   if (!SEMVER.test(binding.version)) {
     throw new Error(`${consumer.repository} candidate process source must pin final SemVer`);
   }
-  if (binding.version === mainVersion) return null;
   const adoptionPull = validateAdoptionPullRequest(pull.pull, consumer);
   await validateCandidate(api, consumer.repository, pull.headSha, binding.version);
   if (binding.version === releaseVersion) {
@@ -182,7 +181,6 @@ export async function reconcileProcessAdoption({
       api,
       expected,
       owned,
-      mainBinding.version,
       releaseVersion,
     );
     if (candidate !== null) candidates.push(candidate);
