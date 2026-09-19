@@ -58,7 +58,7 @@ function ownedPullRequest(pull, consumer) {
   };
 }
 
-function validateAdoptionPullRequest(pull, consumer) {
+function validateAdoptionPullRequest(pull, consumer, { requireCurrentCheckpoint = true } = {}) {
   if (
     !Number.isSafeInteger(pull.number)
     || pull.number < 1
@@ -67,7 +67,8 @@ function validateAdoptionPullRequest(pull, consumer) {
     || pull.draft !== true
     || !SHA.test(pull.head.sha)
     || pull.base?.ref !== consumer.defaultBranch
-    || pull.base?.sha !== consumer.checkpoint
+    || !SHA.test(pull.base?.sha)
+    || (requireCurrentCheckpoint && pull.base.sha !== consumer.checkpoint)
     || pull.base?.repo?.full_name !== consumer.repository
   ) {
     throw new Error(`${consumer.repository} adoption pull request is not one exact open draft`);
@@ -98,17 +99,21 @@ async function inspectCandidate(api, consumer, pull, releaseVersion) {
   if (!SEMVER.test(binding.version)) {
     throw new Error(`${consumer.repository} candidate process source must pin final SemVer`);
   }
-  const adoptionPull = validateAdoptionPullRequest(pull.pull, consumer);
   await validateCandidate(api, consumer.repository, pull.headSha, binding.version);
-  if (binding.version === releaseVersion) {
-    return { ...adoptionPull, version: binding.version, classification: 'exact' };
+  const classification = binding.version === releaseVersion
+    ? 'exact'
+    : isOlderFinalVersion(binding.version, releaseVersion)
+      ? 'stale'
+      : null;
+  if (classification === null) {
+    throw new Error(
+      `${consumer.repository} candidate process source must not be newer than release ${releaseVersion}`,
+    );
   }
-  if (isOlderFinalVersion(binding.version, releaseVersion)) {
-    return { ...adoptionPull, version: binding.version, classification: 'stale' };
-  }
-  throw new Error(
-    `${consumer.repository} candidate process source must not be newer than release ${releaseVersion}`,
-  );
+  const adoptionPull = validateAdoptionPullRequest(pull.pull, consumer, {
+    requireCurrentCheckpoint: classification === 'exact',
+  });
+  return { ...adoptionPull, version: binding.version, classification };
 }
 
 function staleComment(candidate, releaseVersion) {
