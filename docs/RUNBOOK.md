@@ -24,12 +24,15 @@ RE2 fallback diagnostic as deterministic failure. Never use
 `RENOVATE_X_IGNORE_RE2`, broaden script approval, or substitute another validator.
 
 Each production attempt has a separate bounded NDJSON log. The first complete result
-is classified. `lockfile-error`, missing-completion, and exact engineering-process
-registry-visibility outcomes wait one fixed five-minute propagation window and
-receive exactly one idempotent retry; malformed logs, unexpected or duplicate
-repositories, config races, other repository results, and non-retryable artifact
-failures stop immediately. A second failure opens or updates the incident. Renovate
-never finalizes process adoption.
+is classified. `lockfile-error`, missing-completion, an absent exact adoption
+candidate, and exact engineering-process registry-visibility outcomes wait one fixed
+five-minute propagation window and receive exactly one idempotent retry; malformed
+logs, unexpected or duplicate repositories, config races, ambiguous candidates, other
+repository results, and non-retryable artifact failures stop immediately. For a
+release event, the retry first reruns the bounded stale-adoption reconciliation so a
+candidate created during attempt one cannot pin an older release into attempt two.
+A second failure opens or updates the incident. Renovate never finalizes process
+adoption.
 
 For an authenticated release event, the matrix job reconciles stale adoption state
 after intent revalidation and before Renovate attempt 1. It inspects the bounded open

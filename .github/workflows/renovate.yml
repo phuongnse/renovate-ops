@@ -183,6 +183,17 @@ jobs:
           steps.process_adoption_one.outputs.status == 'retryable'
         run: node scripts/wait-for-renovate-retry.mjs
 
+      - name: Reconcile process adoption before retry
+        if: >-
+          github.event_name == 'repository_dispatch' &&
+          (steps.production_attempt_one.outputs.status == 'retryable' ||
+          steps.process_adoption_one.outputs.status == 'retryable')
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_VERSION: ${{ github.event.client_payload.version }}
+          RENOVATE_CONSUMER_JSON: ${{ toJSON(matrix) }}
+        run: node scripts/reconcile-process-adoption.mjs
+
       - name: Renovate production attempt 2
         if: >-
           steps.production_attempt_one.outputs.status == 'retryable' ||

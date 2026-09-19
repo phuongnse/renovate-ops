@@ -21,6 +21,7 @@ const HASH_LINE = /^ {4}--hash=sha256:[0-9a-f]{64}(?: \\)?$/;
 const HASH_CONTINUATION = / \\$/;
 
 export class ReleaseNotObservedError extends Error {}
+export class AdoptionNotObservedError extends Error {}
 
 export function isOlderFinalVersion(observed, expected) {
   if (!SEMVER.test(observed) || !SEMVER.test(expected)) return false;
@@ -275,6 +276,11 @@ export async function validateProcessAdoptionResult({
   }
   const exact = candidates.filter(({ version }) => version === releaseVersion);
   const matches = exact.length ? exact : candidates;
+  if (matches.length === 0) {
+    throw new AdoptionNotObservedError(
+      `${expected.repository} must have one open process adoption pull request`,
+    );
+  }
   if (matches.length !== 1) {
     throw new Error(`${expected.repository} must have one open process adoption pull request`);
   }
@@ -293,9 +299,14 @@ export async function classifyProcessAdoptionResult(options) {
       status: 'passed',
     };
   } catch (error) {
-    if (!(error instanceof ReleaseNotObservedError)) throw error;
+    if (!(error instanceof ReleaseNotObservedError) && !(error instanceof AdoptionNotObservedError)) {
+      throw error;
+    }
+    const classification = error instanceof ReleaseNotObservedError
+      ? 'release-not-observed'
+      : 'adoption-not-observed';
     return {
-      classification: 'release-not-observed',
+      classification,
       message: error.message,
       status: 'retryable',
     };

@@ -164,7 +164,7 @@ test('production Renovate is activated by a bounded authenticated release event'
   assert.match(workflow, /validate-process-adoption-result\.mjs --classify/);
   assert.equal(
     (workflow.match(/steps\.process_adoption_one\.outputs\.status == 'retryable'/g) ?? []).length,
-    3,
+    4,
   );
   assert.match(workflow, /"\$RENOVATE_ATTEMPT_TWO_LOG" "\$RENOVATE_CONSUMER_MANIFEST"/);
   assert.equal((workflow.match(/name: Renovate production attempt [12]/g) ?? []).length, 2);
@@ -208,6 +208,15 @@ test('production Renovate is activated by a bounded authenticated release event'
   const attemptPosition = workflow.indexOf('name: Renovate production attempt 1');
   assert.ok(intentPosition >= 0 && intentPosition < recoveryPosition && recoveryPosition < attemptPosition);
   assert.match(workflow, /run: node scripts\/reconcile-process-adoption\.mjs/);
+  const retryReconciliationPosition = workflow.indexOf('name: Reconcile process adoption before retry');
+  const waitPosition = workflow.indexOf('name: Wait before the single bounded recovery attempt');
+  const retryAttemptPosition = workflow.indexOf('name: Renovate production attempt 2');
+  assert.ok(waitPosition >= 0 && waitPosition < retryReconciliationPosition);
+  assert.ok(retryReconciliationPosition < retryAttemptPosition);
+  assert.match(
+    workflow.slice(retryReconciliationPosition, retryAttemptPosition),
+    /github\.event_name == 'repository_dispatch'/,
+  );
   assert.match(workflow, /RELEASE_VERSION: \$\{\{ github\.event\.client_payload\.version \}\}/);
   assert.match(workflow, /if: github\.event_name == 'repository_dispatch'/);
   assert.match(workflow, /name: Validate exact published process adoption/);
