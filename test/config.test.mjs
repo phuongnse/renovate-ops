@@ -128,6 +128,8 @@ test('only the exact non-shell process adoption command is allowed', () => {
   assert.ok(authorityRule);
   assert.equal(authorityRule.enabled, true);
   assert.equal(authorityRule.draftPR, true);
+  assert.equal(authorityRule.recreateWhen, 'always');
+  assert.equal(Object.hasOwn(authorityRule, 'recreateClosed'), false);
   assert.deepEqual(authorityRule.postUpgradeTasks.commands, [
     'python .process/adopt-process.py --project-root . --requirements-lock requirements/process.txt',
   ]);

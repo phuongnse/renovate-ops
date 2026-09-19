@@ -66,6 +66,7 @@
         }
       },
       "prPriority": 100,
+      "recreateWhen": "always",
       "schedule": [
         "at any time"
       ]
