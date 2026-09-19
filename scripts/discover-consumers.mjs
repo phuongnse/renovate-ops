@@ -16,6 +16,7 @@ export const RENOVATE_BRANCH_PREFIX = 'automation/renovate/';
 const API_ROOT = 'https://api.github.com';
 const MAX_API_BYTES = 1_000_000;
 const MAX_AGGREGATE_API_BYTES = 16_000_000;
+const MAX_REQUEST_BODY_BYTES = 64_000;
 const MAX_CONFIG_BYTES = 256_000;
 const API_TIMEOUT_MS = 30_000;
 
@@ -38,15 +39,16 @@ async function boundedResponse(response, label, budget, { allowNotFound = false 
   if (bytes.length > MAX_API_BYTES) throw new Error(`${label} exceeds the response size limit`);
   budget.bytes += bytes.length;
   if (budget.bytes > budget.limit) throw new Error('GitHub API responses exceed the aggregate size limit');
+  if (allowNotFound && response.status === 404) return null;
+  if (response.status === 204 && bytes.length === 0) return null;
   let document;
   try {
     document = JSON.parse(bytes.toString('utf8'));
   } catch (error) {
     throw new Error(`${label} returned invalid JSON: ${error.message}`);
   }
-  if (allowNotFound && response.status === 404) return null;
   if (!response.ok) {
-    throw new Error(`${label} returned HTTP ${response.status}: ${document.message ?? 'unknown error'}`);
+    throw new Error(`${label} returned HTTP ${response.status}: ${document?.message ?? 'unknown error'}`);
   }
   return document;
 }
@@ -64,16 +66,33 @@ function client(token, fetchImpl, {
   }
   const budget = { bytes: 0, limit: maxAggregateBytes };
   return async (path, options = {}) => {
+    const method = options.method ?? 'GET';
+    if (!['DELETE', 'GET', 'PATCH', 'POST'].includes(method)) {
+      throw new Error(`GitHub API method ${method} is not allowed`);
+    }
+    const request = { method };
+    if (Object.hasOwn(options, 'body')) {
+      const body = typeof options.body === 'string'
+        ? options.body
+        : JSON.stringify(options.body);
+      if (Buffer.byteLength(body) > MAX_REQUEST_BODY_BYTES) {
+        throw new Error(`GitHub API ${method} ${path} request body exceeds the size limit`);
+      }
+      request.body = body;
+    }
+    const headers = {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+      'User-Agent': 'phuongnse-renovate-ops',
+      'X-GitHub-Api-Version': '2022-11-28',
+    };
+    if (Object.hasOwn(request, 'body')) headers['Content-Type'] = 'application/json';
     const response = await fetchImpl(`${API_ROOT}${path}`, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${token}`,
-        'User-Agent': 'phuongnse-renovate-ops',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
+      ...request,
+      headers,
       signal: AbortSignal.timeout(timeoutMs),
     });
-    return boundedResponse(response, `GET ${path}`, budget, options);
+    return boundedResponse(response, `${method} ${path}`, budget, options);
   };
 }
 

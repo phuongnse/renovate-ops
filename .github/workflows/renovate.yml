@@ -124,6 +124,14 @@ jobs:
           RENOVATE_CONSUMER_JSON: ${{ toJSON(matrix) }}
         run: node scripts/discover-consumers.mjs --revalidate
 
+      - name: Reconcile superseded process adoption
+        if: github.event_name == 'repository_dispatch'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_VERSION: ${{ github.event.client_payload.version }}
+          RENOVATE_CONSUMER_JSON: ${{ toJSON(matrix) }}
+        run: node scripts/reconcile-process-adoption.mjs
+
       - name: Renovate dry-run
         if: github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run'
         uses: renovatebot/github-action@e09d604f8f803bb527bd8321ed5be06c460b8682 # v46.2.2

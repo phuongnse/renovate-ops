@@ -31,6 +31,22 @@ repositories, config races, other repository results, and non-retryable artifact
 failures stop immediately. A second failure opens or updates the incident. Renovate
 never finalizes process adoption.
 
+For an authenticated release event, the matrix job reconciles stale adoption state
+after intent revalidation and before Renovate attempt 1. It inspects the bounded open
+pull-request listing first and mutates only one exact same-repository draft Renovate
+candidate whose immutable `requirements/process.in` pin is older than the published
+release and whose compiled lock and process metadata are internally valid. Recovery
+comments the PR, deletes only its matching bot branch, and closes the PR. Exact or
+newer candidates, foreign branches, unrelated Renovate updates, malformed rows, and
+ambiguous candidates are preserved or fail closed; no cleanup is attempted from a
+partial inspection. A failed mutation propagates to the incident path for explicit
+operator handling.
+
+Retryable lockfile diagnostics contain only bounded same-repository error/artifact
+fields and redact credential-like values. Use that context to distinguish registry
+publication, pip-compile, and branch-state failures, but do not paste raw Renovate
+logs or credentials into an incident.
+
 Package-manager children receive `PIP_REFRESH_PACKAGE=engineering-process` through
 Renovate's native custom environment. Pip 26.2 and newer revalidate that package's
 Simple metadata while retaining artifact caches; older pip revalidated by default.
