@@ -12,6 +12,13 @@ import { manifestForConsumer, MAX_MANIFEST_BYTES } from './validate-consumer-man
 const MAX_OPEN_PULLS = 100;
 const SEMVER = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
 const SHA = /^[0-9a-f]{40}$/;
+const PROCESS_BRANCH_NAME = /^(?:engineering-process|major-engineering-process)(?:-v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))?$/;
+
+function isProcessAdoptionBranch(ref) {
+  return typeof ref === 'string'
+    && ref.startsWith(RENOVATE_BRANCH_PREFIX)
+    && PROCESS_BRANCH_NAME.test(ref.slice(RENOVATE_BRANCH_PREFIX.length));
+}
 
 function parseConsumer(encoded) {
   if (typeof encoded !== 'string' || Buffer.byteLength(encoded) > MAX_MANIFEST_BYTES) {
@@ -38,7 +45,7 @@ function ownedPullRequest(pull, consumer) {
     throw new Error(`${consumer.repository} returned malformed pull request metadata`);
   }
   if (
-    !pull.head.ref.startsWith(RENOVATE_BRANCH_PREFIX)
+    !isProcessAdoptionBranch(pull.head.ref)
     || pull.head.repo?.full_name !== consumer.repository
   ) return null;
   if (!SHA.test(pull.head.sha)) {
