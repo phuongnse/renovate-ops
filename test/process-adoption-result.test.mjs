@@ -316,6 +316,18 @@ test('exact release classifier retries one coherent older candidate', async () =
   assert.equal(result.classification, 'release-not-observed');
 });
 
+test('exact release classifier retries when no adoption candidate is observable', async () => {
+  const result = await classifyProcessAdoptionResult({
+    consumer,
+    fetchImpl: fetchFixture({ pulls: [] }),
+    releaseVersion: '1.1.1',
+    token,
+  });
+  assert.equal(result.status, 'retryable');
+  assert.equal(result.classification, 'adoption-not-observed');
+  assert.match(result.message, /must have one open process adoption pull request/);
+});
+
 test('exact release classifier rejects a newer candidate without retry', async () => {
   await assert.rejects(
     classifyProcessAdoptionResult({
