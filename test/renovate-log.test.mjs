@@ -40,6 +40,32 @@ test('Renovate outcomes reject lockfile errors', () => {
   });
 });
 
+test('retryable lockfile diagnostics include bounded context and redact credentials', () => {
+  const records = [
+    {
+      errorMessage: 'registry token=visible-secret while refreshing engineering-process',
+      msg: 'dependency refresh failed',
+      repository: repositories[0],
+    },
+    {
+      msg: 'Repository finished',
+      repository: repositories[0],
+      result: 'lockfile-error',
+    },
+    {
+      msg: 'Repository finished',
+      repository: repositories[1],
+      result: 'done',
+    },
+  ];
+
+  const result = classifyRenovateRecords(records, repositories);
+  assert.equal(result.classification, 'lockfile-error');
+  assert.match(result.diagnostic, /dependency refresh failed/);
+  assert.match(result.diagnostic, /token=\[redacted\]/);
+  assert.doesNotMatch(result.diagnostic, /visible-secret/);
+});
+
 test('Renovate outcomes reject branch artifact errors', () => {
   const records = [
     ...completions(),

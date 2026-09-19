@@ -188,6 +188,13 @@ test('production Renovate is activated by a bounded authenticated release event'
   });
   assert.match(ciWorkflow, /--refresh-package engineering-process/);
   assert.match(workflow, /name: Revalidate consumer intent before execution/);
+  const intentPosition = workflow.indexOf('name: Revalidate consumer intent before execution');
+  const recoveryPosition = workflow.indexOf('name: Reconcile superseded process adoption');
+  const attemptPosition = workflow.indexOf('name: Renovate production attempt 1');
+  assert.ok(intentPosition >= 0 && intentPosition < recoveryPosition && recoveryPosition < attemptPosition);
+  assert.match(workflow, /run: node scripts\/reconcile-process-adoption\.mjs/);
+  assert.match(workflow, /RELEASE_VERSION: \$\{\{ github\.event\.client_payload\.version \}\}/);
+  assert.match(workflow, /if: github\.event_name == 'repository_dispatch'/);
   assert.match(workflow, /name: Validate exact published process adoption/);
   assert.match(workflow, /if: github\.event_name == 'repository_dispatch'/);
   assert.match(workflow, /RELEASE_VERSION: \$\{\{ github\.event\.client_payload\.version \}\}/);

@@ -7,6 +7,7 @@ import { readConsumerManifest } from './validate-consumer-manifest.mjs';
 const MAX_LOG_BYTES = 20_000_000;
 const MAX_LOG_LINES = 100_000;
 const MAX_DIAGNOSTIC_BYTES = 4_096;
+const MAX_CONTEXT_RECORDS = 20;
 
 export class RenovateOutcomeError extends Error {
   constructor(code, message, { diagnostic = '', retryable = false } = {}) {
@@ -39,10 +40,40 @@ function artifactErrorsAreRetryable(errors) {
   });
 }
 
+function diagnosticContext(records, index, repository) {
+  const context = records
+    .slice(Math.max(0, index - MAX_CONTEXT_RECORDS), index)
+    .filter((record) => (
+      record?.repository === repository
+      && (
+        (typeof record.msg === 'string' && record.msg !== 'Repository finished')
+        ||
+        typeof record.errorMessage === 'string'
+        || (Array.isArray(record.artifactErrors) && record.artifactErrors.length > 0)
+      )
+    ))
+    .slice(-MAX_CONTEXT_RECORDS)
+    .map((record) => {
+      const selected = {};
+      for (const field of ['msg', 'result', 'errorMessage', 'artifactErrors']) {
+        if (Object.hasOwn(record, field)) selected[field] = record[field];
+      }
+      return selected;
+    });
+  return context.length > 0 ? context : undefined;
+}
+
+function lockfileDiagnostic(records, index, repository, result) {
+  const diagnostic = { repository, result };
+  const context = diagnosticContext(records, index, repository);
+  if (context !== undefined) diagnostic.records = context;
+  return redactDiagnostic(diagnostic);
+}
+
 export function validateRenovateRecords(records, repositories) {
   const expected = new Set(repositories);
   const completed = new Map();
-  for (const record of records) {
+  for (const [index, record] of records.entries()) {
     if (record === null || typeof record !== 'object' || Array.isArray(record)) {
       throw new RenovateOutcomeError('invalid-record', 'Renovate log contains a non-object record');
     }
@@ -89,7 +120,7 @@ export function validateRenovateRecords(records, repositories) {
         record.result === 'lockfile-error' ? 'lockfile-error' : 'repository-result',
         `Renovate ${repository} finished with result ${record.result}`,
         {
-          diagnostic: redactDiagnostic({ repository, result: record.result }),
+          diagnostic: lockfileDiagnostic(records, index, repository, record.result),
           retryable: record.result === 'lockfile-error',
         },
       );

@@ -22,7 +22,7 @@ const HASH_CONTINUATION = / \\$/;
 
 export class ReleaseNotObservedError extends Error {}
 
-function isOlderFinalVersion(observed, expected) {
+export function isOlderFinalVersion(observed, expected) {
   if (!SEMVER.test(observed) || !SEMVER.test(expected)) return false;
   const left = observed.split('.');
   const right = expected.split('.');
@@ -39,9 +39,10 @@ function canonicalName(value) {
   return value.toLowerCase().replaceAll(/[._-]+/g, '-');
 }
 
-export function processBinding(content, { compiled, label }) {
+export function processBinding(content, { compiled, label, allowAbsent = false }) {
   const lines = content.split('\n');
   const bindings = [];
+  let sawProcessRequirement = false;
   const canonical = compiled
     ? /^engineering-process==([^\s\\]+) \\$/
     : /^engineering-process==([^\s\\]+)$/;
@@ -54,6 +55,7 @@ export function processBinding(content, { compiled, label }) {
     if (line.startsWith('-')) continue;
     const name = line.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)/)?.[1];
     if (!name || canonicalName(name) !== 'engineering-process') continue;
+    sawProcessRequirement = true;
     const match = canonical.exec(raw);
     if (match === null) {
       throw new Error(`${label} has a non-canonical active engineering-process requirement`);
@@ -61,6 +63,7 @@ export function processBinding(content, { compiled, label }) {
     bindings.push({ index, version: match[1] });
   }
   if (bindings.length !== 1) {
+    if (allowAbsent && !sawProcessRequirement) return null;
     throw new Error(`${label} must contain exactly one active engineering-process requirement`);
   }
   return { ...bindings[0], lines };
@@ -95,10 +98,12 @@ function decodeFile(document, label) {
   return { bytes, text };
 }
 
-async function fileAt(api, repository, path, ref) {
+export async function fileAt(api, repository, path, ref, { allowNotFound = false } = {}) {
   const document = await api(
     `/repos/${repository}/contents/${path}?ref=${encodeURIComponent(ref)}`,
+    { allowNotFound },
   );
+  if (document === null) return null;
   return decodeFile(document, `${repository}/${path}@${ref}`);
 }
 
