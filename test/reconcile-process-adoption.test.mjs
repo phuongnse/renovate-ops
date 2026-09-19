@@ -160,16 +160,18 @@ test('exact release candidates and foreign branches remain untouched', async (t)
     assert.deepEqual(mutations(calls), []);
   });
 
-  await t.test('exact release candidate with moved base checkpoint fails closed', async () => {
+  await t.test('exact release candidate with moved base checkpoint is refreshed', async () => {
     const { calls, fetchImpl } = fixture({
       pulls: [pullRequest({ version: '1.2.0', baseSha: 'f'.repeat(40) })],
       versions: { [headSha]: '1.2.0' },
     });
-    await assert.rejects(
-      reconcileProcessAdoption({ consumer, fetchImpl, releaseVersion: '1.2.0', token }),
-      /not one exact open draft/,
-    );
-    assert.deepEqual(mutations(calls), []);
+    const result = await reconcileProcessAdoption({
+      consumer, fetchImpl, releaseVersion: '1.2.0', token,
+    });
+    assert.equal(result.status, 'reconciled');
+    assert.equal(result.reconciled[0].previousVersion, '1.2.0');
+    assert.deepEqual(mutations(calls).map(({ method }) => method), ['POST', 'DELETE', 'PATCH']);
+    assert.match(JSON.parse(mutations(calls)[0].body).body, /older consumer checkpoint/);
   });
 
   await t.test('candidate equal to main is stale after a newer release', async () => {

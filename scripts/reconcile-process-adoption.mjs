@@ -101,7 +101,7 @@ async function inspectCandidate(api, consumer, pull, releaseVersion) {
   }
   await validateCandidate(api, consumer.repository, pull.headSha, binding.version);
   const classification = binding.version === releaseVersion
-    ? 'exact'
+    ? pull.pull.base?.sha === consumer.checkpoint ? 'exact' : 'stale'
     : isOlderFinalVersion(binding.version, releaseVersion)
       ? 'stale'
       : null;
@@ -113,10 +113,21 @@ async function inspectCandidate(api, consumer, pull, releaseVersion) {
   const adoptionPull = validateAdoptionPullRequest(pull.pull, consumer, {
     requireCurrentCheckpoint: classification === 'exact',
   });
-  return { ...adoptionPull, version: binding.version, classification };
+  return {
+    ...adoptionPull,
+    version: binding.version,
+    classification,
+    refreshBase: binding.version === releaseVersion && classification === 'stale',
+  };
 }
 
 function staleComment(candidate, releaseVersion) {
+  if (candidate.refreshBase) {
+    return [
+      `engineering-process ${candidate.version} matches release ${releaseVersion}, but its adoption pull request is based on an older consumer checkpoint.`,
+      'This stale Renovate adoption pull request is being closed by the release recovery preflight.',
+    ].join(' ');
+  }
   return [
     `engineering-process ${candidate.version} is superseded by release ${releaseVersion}.`,
     'This stale Renovate adoption pull request is being closed by the release recovery preflight.',
