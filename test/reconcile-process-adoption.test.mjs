@@ -55,13 +55,15 @@ function pullRequest({
   version = '1.1.0',
   headRepository = repository,
   draft = true,
+  baseSha = checkpoint,
+  baseRepository = repository,
 } = {}) {
   return {
     number,
     state: 'open',
     draft,
     head: { ref: branch, sha: ref, repo: { full_name: headRepository } },
-    base: { ref: 'main', sha: checkpoint, repo: { full_name: repository } },
+    base: { ref: 'main', sha: baseSha, repo: { full_name: baseRepository } },
     version,
   };
 }
@@ -125,7 +127,9 @@ function mutations(calls) {
 }
 
 test('stale exact process candidate is commented, deleted, and closed', async () => {
-  const { calls, fetchImpl } = fixture();
+  const { calls, fetchImpl } = fixture({
+    pulls: [pullRequest({ baseSha: 'f'.repeat(40) })],
+  });
   const result = await reconcileProcessAdoption({
     consumer,
     fetchImpl,
@@ -153,6 +157,18 @@ test('exact release candidates and foreign branches remain untouched', async (t)
       consumer, fetchImpl, releaseVersion: '1.2.0', token,
     });
     assert.equal(result.status, 'nothing-to-reconcile');
+    assert.deepEqual(mutations(calls), []);
+  });
+
+  await t.test('exact release candidate with moved base checkpoint fails closed', async () => {
+    const { calls, fetchImpl } = fixture({
+      pulls: [pullRequest({ version: '1.2.0', baseSha: 'f'.repeat(40) })],
+      versions: { [headSha]: '1.2.0' },
+    });
+    await assert.rejects(
+      reconcileProcessAdoption({ consumer, fetchImpl, releaseVersion: '1.2.0', token }),
+      /not one exact open draft/,
+    );
     assert.deepEqual(mutations(calls), []);
   });
 
