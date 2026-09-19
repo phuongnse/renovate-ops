@@ -195,8 +195,9 @@ jobs:
           env-regex: '^(?:RENOVATE_\w+|OPS_TARGET_REPOSITORY|LOG_LEVEL|LOG_FORMAT|LOG_FILE(?:_LEVEL|_FORMAT)?|GITHUB_COM_TOKEN|NODE_OPTIONS|NO_COLOR|(?:HTTPS?|NO)_PROXY|(?:https?|no)_proxy)$'
         env:
           LOG_FILE: ${{ env.RENOVATE_ATTEMPT_TWO_LOG }}
+          LOG_FILE_LEVEL: debug
           LOG_FORMAT: json
-          LOG_LEVEL: debug
+          LOG_LEVEL: info
           OPS_TARGET_REPOSITORY: ${{ matrix.repository }}
 
       - name: Validate production attempt 2

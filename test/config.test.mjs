@@ -175,8 +175,10 @@ test('production Renovate is activated by a bounded authenticated release event'
     workflow.indexOf('name: Validate production attempt 2'),
   );
   assert.match(attemptOne, /LOG_LEVEL: info/);
-  assert.match(attemptTwo, /LOG_LEVEL: debug/);
-  assert.doesNotMatch(attemptTwo, /LOG_FILE_LEVEL: debug/);
+  assert.doesNotMatch(attemptOne, /LOG_FILE_LEVEL: debug/);
+  assert.match(attemptTwo, /LOG_FILE_LEVEL: debug/);
+  assert.match(attemptTwo, /LOG_LEVEL: info/);
+  assert.doesNotMatch(attemptTwo, /LOG_LEVEL: debug/);
   const childEnvironment = JSON.parse(execFileSync(
     process.execPath,
     [
