@@ -166,6 +166,19 @@ test('production Renovate is activated by a bounded authenticated release event'
   );
   assert.match(workflow, /"\$RENOVATE_ATTEMPT_TWO_LOG" "\$RENOVATE_CONSUMER_MANIFEST"/);
   assert.equal((workflow.match(/name: Renovate production attempt [12]/g) ?? []).length, 2);
+  const attemptOne = workflow.slice(
+    workflow.indexOf('name: Renovate production attempt 1'),
+    workflow.indexOf('name: Classify production attempt 1'),
+  );
+  const attemptTwo = workflow.slice(
+    workflow.indexOf('name: Renovate production attempt 2'),
+    workflow.indexOf('name: Validate production attempt 2'),
+  );
+  assert.match(attemptOne, /LOG_LEVEL: info/);
+  assert.doesNotMatch(attemptOne, /LOG_FILE_LEVEL: debug/);
+  assert.match(attemptTwo, /LOG_FILE_LEVEL: debug/);
+  assert.match(attemptTwo, /LOG_LEVEL: info/);
+  assert.doesNotMatch(attemptTwo, /LOG_LEVEL: debug/);
   const childEnvironment = JSON.parse(execFileSync(
     process.execPath,
     [

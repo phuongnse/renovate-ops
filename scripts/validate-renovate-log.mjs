@@ -55,7 +55,7 @@ function diagnosticContext(records, index, repository) {
     .slice(-MAX_CONTEXT_RECORDS)
     .map((record) => {
       const selected = {};
-      for (const field of ['msg', 'result', 'errorMessage', 'artifactErrors']) {
+      for (const field of ['msg', 'result', 'errorMessage', 'err', 'artifactErrors']) {
         if (Object.hasOwn(record, field)) selected[field] = record[field];
       }
       return selected;
