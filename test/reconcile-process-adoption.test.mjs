@@ -181,6 +181,21 @@ test('exact release candidates and foreign branches remain untouched', async (t)
     assert.deepEqual(mutations(calls).map(({ method }) => method), ['POST', 'DELETE', 'PATCH']);
   });
 
+  await t.test('major process branches', async () => {
+    for (const branch of [
+      'automation/renovate/major-engineering-process',
+      'automation/renovate/major-engineering-process-v1.1.0',
+    ]) {
+      const { calls, fetchImpl } = fixture({ pulls: [pullRequest({ branch })] });
+      const result = await reconcileProcessAdoption({
+        consumer, fetchImpl, releaseVersion: '1.2.0', token,
+      });
+      assert.equal(result.status, 'reconciled');
+      assert.equal(result.reconciled[0].branch, branch);
+      assert.deepEqual(mutations(calls).map(({ method }) => method), ['POST', 'DELETE', 'PATCH']);
+    }
+  });
+
   await t.test('unrelated owned Renovate branch', async () => {
     const unrelated = pullRequest({ branch: 'automation/renovate/major-github-artifact-actions' });
     const { calls, fetchImpl } = fixture({ pulls: [unrelated] });
