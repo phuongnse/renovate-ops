@@ -70,9 +70,7 @@ jobs:
           --requirements-lock requirements/process.txt
 
       - name: Validate process distribution and environment
-        run: |
-          processctl adoption check --project-root . --requirements-lock requirements/process.txt
-          processctl doctor --project-root .
+        run: processctl doctor --project-root .
 
       - name: Run governed process profiles
         run: |
